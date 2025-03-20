@@ -12,17 +12,26 @@
   "app": {
     "windows": [
       {
+        "fullscreen": false,
         "title": "my-desktop-pet",
         "width": 800,
         "height": 600,
         "resizable": false,
         "transparent": true,
-        "decorations": true,
-        "alwaysOnTop": true
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false
       }
     ],
     "security": {
       "csp": null
+    },
+    "macOSPrivateApi": true
+  },
+  "plugins":{
+    "window":{
+      "all": true
     }
   },
   "bundle": {

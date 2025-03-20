@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    my_desktop_pet_lib::run()
+    my_desktop_pet_lib::run() // This will call the run() function in lib.rs
 }
