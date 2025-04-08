@@ -1,14 +1,59 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Window } from "@tauri-apps/api/window";
-// import Draggable from "react-draggable";
-import placeHolder from "./assets/placeholder.png";
+// Import your single sprite sheet
+import spriteSheet from "./assets/Fox Sprite Sheet.png";
 
 function App() {
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [windowSize, setWindowSize] = useState({ width: 400, height: 300 }); // Default size from config
+  const [windowSize, setWindowSize] = useState({ width: 400, height: 300 });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [animationState, setAnimationState] = useState("idle-right");
+  const [frameIndex, setFrameIndex] = useState(0);
   const windowRef = useRef(null);
+  
+  // Frame size constants - adjust these to match your actual sprite size
+  const FRAME_WIDTH = 8;
+  const FRAME_HEIGHT = 8;
+  const DISPLAY_SCALE = 3; // Increase this to make the pet larger
+  
+  // Define animation sequences from the sprite sheet
+  // For simplicity, we'll define all animations as if facing right
+  // and use CSS transform to flip for left-facing animations
+  const animations = {
+    "idle": {
+      frames: [
+        [0, 0],       // x, y coordinates of each frame
+        [32, 0],
+        [64, 0],
+        [96, 0],
+        [128, 0],
+      ],
+      frameDuration: 200,
+    },
+    "run": {
+      frames: [
+        [0, 32],
+        [32, 32],
+        [64, 32],
+        [96, 32],
+      ],
+      frameDuration: 100,
+    },
+    "jump": {
+      frames: [
+        [0, 64],
+        [32, 64],
+      ],
+      frameDuration: 150,
+    },
+    "fall": {
+      frames: [
+        [128, 64],
+      ],
+      frameDuration: 150,
+    },
+  };
 
   // Initialize window size and listen for resize events
   useEffect(() => {
@@ -18,37 +63,28 @@ function App() {
         const factor = await appWindow.scaleFactor() || 1;
         const innerSize = await appWindow.innerSize();
         
-        // Convert logical to physical pixels and account for scale factor
         const physicalSize = {
           width: Math.floor(innerSize.width / factor),
           height: Math.floor(innerSize.height / factor)
         };
         
-        console.log("Window inner size:", innerSize.width, innerSize.height);
-        console.log("Scale factor:", factor);
-        console.log("Physical size:", physicalSize.width, physicalSize.height);
-        
         setWindowSize(physicalSize);
         setIsLoaded(true);
       } catch (error) {
         console.error("Failed to get window size:", error);
-        // Fall back to config defaults
         setIsLoaded(true);
       }
     };
 
     getWindowSize();
 
-    // Set up resize listener
     const appWindow = Window.getCurrent();
     const cleanup = appWindow.listen("resize", getWindowSize);
     
-    // Measure actual DOM element size as a fallback
     if (windowRef.current) {
       const resizeObserver = new ResizeObserver(entries => {
         for (const entry of entries) {
           if (entry.contentRect) {
-            console.log("Container actual size:", entry.contentRect.width, entry.contentRect.height);
             if (windowSize.width === 0 || windowSize.height === 0) {
               setWindowSize({
                 width: entry.contentRect.width,
@@ -71,61 +107,104 @@ function App() {
     };
   }, []);
 
+  // Animation frame timing
+  useEffect(() => {
+    if (!isLoaded) return;
+    
+    // Extract the base animation name without direction
+    const baseAnimation = animationState.split('-')[0];
+    const config = animations[baseAnimation];
+    
+    if (!config) return;
+    
+    const frameTimer = setTimeout(() => {
+      setFrameIndex(prev => (prev + 1) % config.frames.length);
+    }, config.frameDuration);
+    
+    return () => clearTimeout(frameTimer);
+  }, [frameIndex, animationState, isLoaded]);
+
   // Update pet position at regular intervals
   useEffect(() => {
     if (!isLoaded || windowSize.width <= 0 || windowSize.height <= 0) {
-      return; // Skip if window size not initialized yet
+      return;
     }
 
     const updatePosition = async () => {
       try {
-        const [x, y] = await invoke("get_pet_movement", {
+        const [x, y, state] = await invoke("get_pet_movement", {
           windowWidth: windowSize.width,
           windowHeight: windowSize.height
         });
         
-        // Occasional logging to avoid spamming the console
-        if (Math.random() < 0.01) {
-          console.log(`Pet position: x=${x}, y=${y}, window=${windowSize.width}x${windowSize.height}`);
-        }
-        
         setPosition({ x, y });
+        
+        // Only change the animation state if it's different
+        if (state !== animationState) {
+          setAnimationState(state);
+          setFrameIndex(0); // Reset frame index when changing animation
+        }
       } catch (error) {
         console.error("Failed to update pet position:", error);
       }
     };
 
-    // Initial position update
     updatePosition();
-
-    // Regular updates
     const interval = setInterval(updatePosition, 50);
     return () => clearInterval(interval);
-  }, [windowSize, isLoaded]);
+  }, [windowSize, isLoaded, animationState]);
+
+  // Get the current frame from the animation sequence
+  const getCurrentFrame = () => {
+    // Extract the base animation name without direction
+    const baseAnimation = animationState.split('-')[0];
+    const animation = animations[baseAnimation];
+    
+    if (!animation) return [0, 0]; // Default frame
+    
+    return animation.frames[frameIndex];
+  };
+
+  // Calculate sprite style based on current frame
+  const getSpriteStyle = () => {
+    const [x, y] = getCurrentFrame();
+    const isFlipped = animationState.endsWith('-left');
+    
+    return {
+      width: `${FRAME_WIDTH * DISPLAY_SCALE}px`,
+      height: `${FRAME_HEIGHT * DISPLAY_SCALE}px`,
+      backgroundImage: `url(${spriteSheet})`,
+      backgroundPosition: `-${x}px -${y}px`,
+      backgroundSize: `${spriteSheet.width * DISPLAY_SCALE}px ${spriteSheet.height * DISPLAY_SCALE}px`,
+      backgroundRepeat: "no-repeat",
+      transform: isFlipped ? 'scaleX(-1)' : 'scaleX(1)',
+      transformOrigin: 'center',
+      imageRendering: 'pixelated', // For crisp pixel art scaling
+    };
+  };
 
   return (
     <div 
       className="w-full h-full"
+      ref={windowRef}
       style={{ 
         overflow: "hidden", 
         position: "relative",
         width: "100%",
-        height: "100vh"
+        height: "100vh",
+        backgroundColor: "transparent" // Make the background transparent
       }}
     >
       <div
-        className="absolute transition-all duration-50"
+        className="absolute"
         style={{
           left: `${position.x}px`,
           top: `${position.y}px`,
-          width: "100px",
-          height: "100px"
+          transition: "top 50ms linear, left 50ms linear", // Smooth movement
         }}
       >
-        <img
-          src={placeHolder}
-          alt="Pet"
-          className="w-full h-full"
+        <div
+          style={getSpriteStyle()}
           draggable="false"
         />
       </div>

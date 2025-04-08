@@ -3,6 +3,33 @@ use std::sync::Mutex;
 use std::time::Instant;
 use tauri::State;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum AnimationState {
+    IdleRight,
+    IdleLeft,
+    RunningRight,
+    RunningLeft,
+    JumpingRight,
+    JumpingLeft,
+    FallingRight,
+    FallingLeft,
+}
+
+impl AnimationState {
+    fn to_string(&self) -> &'static str {
+        match self {
+            AnimationState::IdleRight => "idle-right",
+            AnimationState::IdleLeft => "idle-left",
+            AnimationState::RunningRight => "run-right",
+            AnimationState::RunningLeft => "run-left",
+            AnimationState::JumpingRight => "jump-right",
+            AnimationState::JumpingLeft => "jump-left",
+            AnimationState::FallingRight => "fall-right",
+            AnimationState::FallingLeft => "fall-left",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct PetState {
     x: f32,
@@ -15,6 +42,8 @@ struct PetState {
     pet_height: f32,
     window_width: f32,
     window_height: f32,
+    animation_state: AnimationState,
+    facing_direction: bool, // true for right, false for left
 }
 
 impl PetState {
@@ -50,6 +79,8 @@ impl PetState {
             pet_height,
             window_width: effective_width,
             window_height: effective_height,
+            animation_state: AnimationState::IdleRight,
+            facing_direction: true,
         }
     }
 
@@ -122,6 +153,7 @@ impl PetState {
         if self.x < 0.0 {
             self.x = 0.0;
             self.velocity_x = -self.velocity_x * 0.8; // Bounce with loss of energy
+            self.facing_direction = true;
         }
 
         // Right Boundary
@@ -129,6 +161,39 @@ impl PetState {
         if self.x > right_boundary {
             self.x = right_boundary;
             self.velocity_x = -self.velocity_x * 0.5; // Bounce with more loss of energy
+            self.facing_direction = false;
+        }
+
+        if !self.is_on_ground {
+            if self.velocity_y < 0.0 {
+                // Going up (jumping)
+                self.animation_state = if self.facing_direction {
+                    AnimationState::JumpingRight
+                } else {
+                    AnimationState::JumpingLeft
+                };
+            } else {
+                // Coming down (falling)
+                self.animation_state = if self.facing_direction {
+                    AnimationState::FallingRight
+                } else {
+                    AnimationState::FallingLeft
+                };
+            }
+        } else if self.velocity_x.abs() > 5.0 {
+            // Running
+            self.animation_state = if self.velocity_x >= 0.0 {
+                AnimationState::RunningRight
+            } else {
+                AnimationState::RunningLeft
+            };
+        } else {
+            // Idle
+            self.animation_state = if self.facing_direction {
+                AnimationState::IdleRight
+            } else {
+                AnimationState::IdleLeft
+            };
         }
     }
 }
@@ -138,20 +203,28 @@ struct AppState {
 }
 
 #[tauri::command]
-fn get_pet_movement(state: State<AppState>, window_width: f32, window_height: f32) -> (f32, f32) {
+fn get_pet_movement(
+    state: State<AppState>,
+    window_width: f32,
+    window_height: f32,
+) -> (f32, f32, String) {
     let mut pet = state.pet.lock().unwrap();
 
     // Update pet with the current window dimensions
     pet.update(window_width, window_height);
 
-    (pet.x, pet.y)
+    (pet.x, pet.y, pet.animation_state.to_string().to_string())
 }
 
 #[tauri::command]
-fn reset_pet_position(state: State<AppState>, window_width: f32, window_height: f32) -> (f32, f32) {
+fn reset_pet_position(
+    state: State<AppState>,
+    window_width: f32,
+    window_height: f32,
+) -> (f32, f32, String) {
     let mut pet = state.pet.lock().unwrap();
     *pet = PetState::new(window_width, window_height);
-    (pet.x, pet.y)
+    (pet.x, pet.y, pet.animation_state.to_string().to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
