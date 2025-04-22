@@ -14,8 +14,8 @@
       {
         "fullscreen": false,
         "title": "my-desktop-pet",
-        "width": 800,
-        "height": 600,
+        "width": 1200,
+        "height": 800,
         "resizable": false,
         "transparent": true,
         "decorations": false,

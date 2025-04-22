@@ -2,7 +2,7 @@
 name = "my-desktop-pet"
 version = "0.1.0"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["Vickram S Nauth"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -29,5 +29,7 @@ cocoa = "0.25.0"
 objc = "0.2.7"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.48", features = ["Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.48", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }
 
+[features]
+custom-protocol = ["tauri/custom-protocol"]

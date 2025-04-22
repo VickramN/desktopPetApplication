@@ -1,7 +1,11 @@
 use rand::Rng;
 use std::sync::Mutex;
 use std::time::Instant;
+use tauri::Manager;
 use tauri::State;
+
+#[cfg(target_os = "macos")]
+use objc::{msg_send, sel, sel_impl};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum AnimationState {
@@ -227,6 +231,47 @@ fn reset_pet_position(
     (pet.x, pet.y, pet.animation_state.to_string().to_string())
 }
 
+// Platform-specific window setup
+fn setup_window_properties(window: &tauri::WebviewWindow) {
+    // Set up click-through functionality based on platform
+
+    #[cfg(target_os = "macos")]
+    unsafe {
+        if let Ok(ns_window) = window.ns_window() {
+            let ns_window = ns_window as cocoa::base::id;
+            let _: () = msg_send![ns_window, setIgnoresMouseEvents: true];
+            println!("macOS: Set window to ignore mouse events");
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_TRANSPARENT,
+        };
+
+        if let Some(hwnd) = window.hwnd() {
+            let hwnd = HWND(hwnd as isize);
+            // Get current style
+            let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+            // Add the WS_EX_TRANSPARENT style to make the window click-through
+            SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT);
+            println!("Windows: Set window to transparent for mouse events");
+        }
+    }
+
+    // For Linux and other platforms, we rely on the standard Tauri API
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        if let Err(e) = window.set_ignore_cursor_events(true) {
+            println!("Failed to set ignore cursor events: {:?}", e);
+        } else {
+            println!("Set window to ignore cursor events");
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     println!("Starting desktop pet application");
@@ -239,6 +284,19 @@ pub fn run() {
             get_pet_movement,
             reset_pet_position
         ])
+        .setup(|app| {
+            // Apply platform-specific window settings to make it click-through
+            if let Some(window) = app.get_webview_window("main") {
+                setup_window_properties(&window);
+
+                #[cfg(target_os = "windows")]
+                println!("Windows platform detected - applying optimized settings");
+            } else {
+                println!("Warning: Could not find main window");
+            }
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
 }
