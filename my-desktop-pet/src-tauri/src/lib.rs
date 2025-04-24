@@ -2,10 +2,16 @@ use rand::Rng;
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::Manager;
+use tauri::PhysicalSize;
 use tauri::State;
 
 #[cfg(target_os = "macos")]
 use objc::{msg_send, sel, sel_impl};
+
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::RECT;
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum AnimationState {
@@ -278,19 +284,74 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(AppState {
-            pet: Mutex::new(PetState::new(400.0, 300.0)), // Match tauri.conf.json initial size
+            pet: Mutex::new(PetState::new(400.0, 300.0)),
         })
         .invoke_handler(tauri::generate_handler![
             get_pet_movement,
             reset_pet_position
         ])
         .setup(|app| {
-            // Apply platform-specific window settings to make it click-through
+            // Get the main window
             if let Some(window) = app.get_webview_window("main") {
-                setup_window_properties(&window);
-
+                // Resize window based on platform
                 #[cfg(target_os = "windows")]
-                println!("Windows platform detected - applying optimized settings");
+                {
+                    unsafe {
+                        // Get the work area (screen size excluding taskbar)
+                        let mut work_area = RECT::default();
+                        SystemParametersInfoW(
+                            SPI_GETWORKAREA,
+                            0,
+                            &mut work_area as *mut _ as *mut std::ffi::c_void,
+                            0,
+                        );
+
+                        // Calculate work area dimensions
+                        let width = work_area.right - work_area.left;
+                        let height = work_area.bottom - work_area.top;
+
+                        // Set window size to match work area
+                        window
+                            .set_size(PhysicalSize::new(width as u32, height as u32))
+                            .expect("Failed to resize window");
+
+                        // Position at the top-left corner of the work area
+                        window
+                            .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+                                work_area.left,
+                                work_area.top,
+                            )))
+                            .expect("Failed to position window");
+
+                        println!("Resized window to match work area: {}x{}", width, height);
+                    }
+                }
+
+                // For non-Windows platforms, use the full screen
+                #[cfg(not(target_os = "windows"))]
+                {
+                    if let Some(monitor) = window.primary_monitor().expect("Failed to get monitors")
+                    {
+                        let size = monitor.size();
+
+                        window
+                            .set_size(PhysicalSize::new(size.width, size.height))
+                            .expect("Failed to resize window");
+
+                        window
+                            .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+                                0, 0,
+                            )))
+                            .expect("Failed to position window");
+
+                        println!(
+                            "Resized window to match monitor: {}x{}",
+                            size.width, size.height
+                        );
+                    }
+                }
+
+                setup_window_properties(&window);
             } else {
                 println!("Warning: Could not find main window");
             }
