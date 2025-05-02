@@ -146,7 +146,7 @@ impl PetState {
         };
 
         // Floor Boundary (bottom of window)
-        let floor = effective_height - self.pet_height - 15.0;
+        let floor = effective_height - self.pet_height;
         if self.y > floor {
             self.y = floor;
             self.velocity_y = 0.0;
@@ -251,19 +251,12 @@ fn setup_window_properties(window: &tauri::WebviewWindow) {
     }
 
     #[cfg(target_os = "windows")]
-    unsafe {
-        use windows::Win32::Foundation::HWND;
-        use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_TRANSPARENT,
-        };
-
-        if let Some(hwnd) = window.hwnd() {
-            let hwnd = HWND(hwnd as isize);
-            // Get current style
-            let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-            // Add the WS_EX_TRANSPARENT style to make the window click-through
-            SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT);
-            println!("Windows: Set window to transparent for mouse events");
+    {
+        // Use Tauri's built-in function instead of direct Win32 API calls
+        if let Err(e) = window.set_ignore_cursor_events(true) {
+            println!("Failed to set ignore cursor events: {:?}", e);
+        } else {
+            println!("Windows: Set window to ignore mouse events");
         }
     }
 
@@ -302,8 +295,8 @@ pub fn run() {
                         SystemParametersInfoW(
                             SPI_GETWORKAREA,
                             0,
-                            &mut work_area as *mut _ as *mut std::ffi::c_void,
-                            0,
+                            Some(&mut work_area as *mut _ as *mut std::ffi::c_void),
+                            windows::Win32::UI::WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
                         );
 
                         // Calculate work area dimensions
