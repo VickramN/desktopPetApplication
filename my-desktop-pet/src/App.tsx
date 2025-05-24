@@ -1,31 +1,39 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Window } from "@tauri-apps/api/window";
-// Import your single sprite sheet
+// Import sprite sheet
 import spriteSheet from "./assets/Fox Sprite Sheet.png";
+
+// Constants for configuration
+const DEFAULT_WINDOW_WIDTH = 400;
+const DEFAULT_WINDOW_HEIGHT = 300;
+const UPDATE_INTERVAL_MS = 50;
+
+// Frame size and display constants - adjusted to match the sprite sheet
+const FRAME_WIDTH = 8; // Actual pixel width of each frame
+const FRAME_HEIGHT = 8; // Actual pixel height of each frame
+const DISPLAY_SCALE = 3; // Scale factor for displaying the sprite
 
 function App() {
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [windowSize, setWindowSize] = useState({ width: 400, height: 300 });
+  const [windowSize, setWindowSize] = useState({ 
+    width: DEFAULT_WINDOW_WIDTH, 
+    height: DEFAULT_WINDOW_HEIGHT 
+  });
   const [isLoaded, setIsLoaded] = useState(false);
   const [animationState, setAnimationState] = useState("idle-right");
   const [frameIndex, setFrameIndex] = useState(0);
-  const windowRef = useRef(null);
+  const windowRef = useRef<HTMLDivElement>(null);
+  const animationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const positionUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Frame size constants - adjust these to match your actual sprite size
-  const FRAME_WIDTH = 8;
-  const FRAME_HEIGHT = 8;
-  const DISPLAY_SCALE = 3; // Increase this to make the pet larger
-
-  // Define animation sequences from the sprite sheet
-  // For simplicity, we'll define all animations as if facing right
-  // and use CSS transform to flip for left-facing animations
+  // Define animation sequences from the sprite sheet with correct coordinates
   const animations = {
     idle: {
       frames: [
-        [0, 0], // x, y coordinates of each frame
-        [32, 0],
-        [64, 0],
+        [0, 0],     // First frame coordinates
+        [32, 0],    // Second frame coordinates
+        [64, 0],    // etc.
         [96, 0],
         [128, 0],
       ],
@@ -53,73 +61,98 @@ function App() {
     },
   };
 
-  // Initialize window size and listen for resize events
+  // Get window size with memoized callback to prevent unnecessary renders
+  const getWindowSize = useCallback(async () => {
+    try {
+      const appWindow = Window.getCurrent();
+      const factor = await appWindow.scaleFactor() || 1;
+      const innerSize = await appWindow.innerSize();
+
+      const physicalSize = {
+        width: Math.floor(innerSize.width / factor),
+        height: Math.floor(innerSize.height / factor),
+      };
+
+      setWindowSize(physicalSize);
+      setIsLoaded(true);
+    } catch (error) {
+      console.error("Failed to get window size:", error);
+      // Fall back to default dimensions
+      setWindowSize({ width: DEFAULT_WINDOW_WIDTH, height: DEFAULT_WINDOW_HEIGHT });
+      setIsLoaded(true);
+    }
+  }, []);
+
+  // Setup window size listener
   useEffect(() => {
-    const getWindowSize = async () => {
-      try {
-        const appWindow = Window.getCurrent();
-        const factor = (await appWindow.scaleFactor()) || 1;
-        const innerSize = await appWindow.innerSize();
-
-        const physicalSize = {
-          width: Math.floor(innerSize.width / factor),
-          height: Math.floor(innerSize.height / factor),
-        };
-
-        setWindowSize(physicalSize);
-        setIsLoaded(true);
-      } catch (error) {
-        console.error("Failed to get window size:", error);
-        setIsLoaded(true);
-      }
-    };
-
     getWindowSize();
 
-    const appWindow = Window.getCurrent();
-    const cleanup = appWindow.listen("resize", getWindowSize);
+    let unlisten: (() => void) | undefined;
+    
+    // Listen for window resize events
+    const setupListener = async () => {
+      try {
+        const appWindow = Window.getCurrent();
+        unlisten = await appWindow.listen("resize", getWindowSize);
+      } catch (error) {
+        console.error("Failed to set up resize listener:", error);
+      }
+    };
+    
+    setupListener();
 
+    // Set up ResizeObserver as fallback for window size detection
     if (windowRef.current) {
       const resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
           if (entry.contentRect) {
-            if (windowSize.width === 0 || windowSize.height === 0) {
-              setWindowSize({
-                width: entry.contentRect.width,
-                height: entry.contentRect.height,
-              });
+            const { width, height } = entry.contentRect;
+            if (width > 0 && height > 0) {
+              setWindowSize({ width, height });
             }
           }
         }
       });
 
       resizeObserver.observe(windowRef.current);
+      
       return () => {
-        cleanup.then((unlisten) => unlisten());
+        if (unlisten) unlisten();
         resizeObserver.disconnect();
       };
     }
 
     return () => {
-      cleanup.then((unlisten) => unlisten());
+      if (unlisten) unlisten();
     };
-  }, []);
+  }, [getWindowSize]);
 
-  // Animation frame timing
+  // Animation frame timing effect
   useEffect(() => {
     if (!isLoaded) return;
 
     // Extract the base animation name without direction
     const baseAnimation = animationState.split("-")[0];
-    const config = animations[baseAnimation];
+    const config = animations[baseAnimation as keyof typeof animations];
 
     if (!config) return;
 
-    const frameTimer = setTimeout(() => {
+    // Clear any existing timer
+    if (animationTimerRef.current) {
+      clearTimeout(animationTimerRef.current);
+    }
+
+    // Set new timer for frame animation
+    animationTimerRef.current = setTimeout(() => {
       setFrameIndex((prev) => (prev + 1) % config.frames.length);
     }, config.frameDuration);
 
-    return () => clearTimeout(frameTimer);
+    // Clean up on unmount
+    return () => {
+      if (animationTimerRef.current) {
+        clearTimeout(animationTimerRef.current);
+      }
+    };
   }, [frameIndex, animationState, isLoaded]);
 
   // Update pet position at regular intervals
@@ -128,9 +161,10 @@ function App() {
       return;
     }
 
+    // Function to update position via Rust backend
     const updatePosition = async () => {
       try {
-        const [x, y, state] = await invoke("get_pet_movement", {
+        const [x, y, state] = await invoke<[number, number, string]>("get_pet_movement", {
           windowWidth: windowSize.width,
           windowHeight: windowSize.height,
         });
@@ -147,20 +181,31 @@ function App() {
       }
     };
 
+    // Initial position update
     updatePosition();
-    const interval = setInterval(updatePosition, 50);
-    return () => clearInterval(interval);
+    
+    // Set interval for regular updates
+    positionUpdateIntervalRef.current = setInterval(updatePosition, UPDATE_INTERVAL_MS);
+    
+    // Clean up on unmount
+    return () => {
+      if (positionUpdateIntervalRef.current) {
+        clearInterval(positionUpdateIntervalRef.current);
+      }
+    };
   }, [windowSize, isLoaded, animationState]);
 
   // Get the current frame from the animation sequence
   const getCurrentFrame = () => {
     // Extract the base animation name without direction
     const baseAnimation = animationState.split("-")[0];
-    const animation = animations[baseAnimation];
+    const animation = animations[baseAnimation as keyof typeof animations];
 
     if (!animation) return [0, 0]; // Default frame
 
-    return animation.frames[frameIndex];
+    // Make sure we stay within bounds
+    const safeIndex = Math.min(frameIndex, animation.frames.length - 1);
+    return animation.frames[safeIndex];
   };
 
   // Calculate sprite style based on current frame
@@ -180,7 +225,24 @@ function App() {
       transform: isFlipped ? "scaleX(-1)" : "scaleX(1)",
       transformOrigin: "center",
       imageRendering: "pixelated", // For crisp pixel art scaling
+      willChange: "transform, background-position", // Performance optimization
     };
+  };
+
+  // Reset pet position handler
+  const handleReset = async () => {
+    try {
+      const [x, y, state] = await invoke<[number, number, string]>("reset_pet_position", {
+        windowWidth: windowSize.width,
+        windowHeight: windowSize.height,
+      });
+      
+      setPosition({ x, y });
+      setAnimationState(state);
+      setFrameIndex(0);
+    } catch (error) {
+      console.error("Failed to reset pet position:", error);
+    }
   };
 
   return (
@@ -194,6 +256,7 @@ function App() {
         height: "100vh",
         backgroundColor: "transparent", // Make the background transparent
       }}
+      onDoubleClick={handleReset} // Double click to reset pet position
     >
       <div
         className="absolute"
@@ -203,7 +266,7 @@ function App() {
           transition: "top 50ms linear, left 50ms linear", // Smooth movement
         }}
       >
-        <div style={getSpriteStyle()} draggable="false" />
+        <div style={getSpriteStyle()} draggable={false} />
       </div>
     </div>
   );

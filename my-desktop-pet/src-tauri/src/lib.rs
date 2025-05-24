@@ -13,6 +13,12 @@ use windows::Win32::Foundation::RECT;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
 
+// Default window dimensions to ensure consistency
+const DEFAULT_WINDOW_WIDTH: f32 = 400.0;
+const DEFAULT_WINDOW_HEIGHT: f32 = 300.0;
+const PET_WIDTH: f32 = 100.0; // Defined as constants to ensure consistency
+const PET_HEIGHT: f32 = 100.0;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum AnimationState {
     IdleRight,
@@ -48,8 +54,6 @@ struct PetState {
     velocity_y: f32,
     last_update: Instant,
     is_on_ground: bool,
-    pet_width: f32,
-    pet_height: f32,
     window_width: f32,
     window_height: f32,
     animation_state: AnimationState,
@@ -58,17 +62,14 @@ struct PetState {
 
 impl PetState {
     fn new(window_width: f32, window_height: f32) -> Self {
-        let pet_width = 100.0;
-        let pet_height = 100.0;
-
         // Use sensible defaults for initial window size from config (400x300)
         let effective_width = if window_width <= 0.0 {
-            400.0
+            DEFAULT_WINDOW_WIDTH
         } else {
             window_width
         };
         let effective_height = if window_height <= 0.0 {
-            300.0
+            DEFAULT_WINDOW_HEIGHT
         } else {
             window_height
         };
@@ -79,14 +80,12 @@ impl PetState {
         );
 
         PetState {
-            x: effective_width / 2.0 - pet_width / 2.0,
-            y: effective_height - pet_height,
+            x: effective_width / 2.0 - PET_WIDTH / 2.0,
+            y: effective_height - PET_HEIGHT,
             velocity_x: 0.0,
             velocity_y: 0.0,
             last_update: Instant::now(),
             is_on_ground: true,
-            pet_width,
-            pet_height,
             window_width: effective_width,
             window_height: effective_height,
             animation_state: AnimationState::IdleRight,
@@ -114,18 +113,31 @@ impl PetState {
         // Cap delta time to prevent jumps after application freeze
         delta_time = delta_time.min(0.05);
 
-        let gravity = 980.0;
-        let jump_force = -500.0;
-        let max_speed_x = 200.0;
+        const GRAVITY: f32 = 980.0;
+        const JUMP_FORCE: f32 = -500.0;
+        const MAX_SPEED_X: f32 = 200.0;
+        const BOUNCE_FACTOR_X: f32 = 0.8; // Energy retention on x-bounce
+        const RIGHT_BOUNCE_FACTOR: f32 = 0.5; // More energy loss on right boundary
 
         if !self.is_on_ground {
-            self.velocity_y += gravity * delta_time;
+            self.velocity_y += GRAVITY * delta_time;
         }
 
         let mut rng = rand::thread_rng();
+
         if self.is_on_ground && rng.gen_bool(0.01) {
-            self.velocity_y = jump_force;
-            self.velocity_x = rng.gen_range(-max_speed_x..max_speed_x);
+            self.velocity_y = JUMP_FORCE;
+
+            if self.facing_direction {
+                self.velocity_x = rng.gen_range(0.0..MAX_SPEED_X);
+            } else {
+                self.velocity_x = rng.gen_range(-MAX_SPEED_X..0.0);
+            }
+
+            if rng.gen_bool(0.1) {
+                self.velocity_x *= -0.5;
+            }
+
             self.is_on_ground = false;
         }
 
@@ -135,18 +147,18 @@ impl PetState {
 
         // Get effective window dimensions with non-zero check
         let effective_width = if window_width <= 10.0 {
-            400.0
+            DEFAULT_WINDOW_WIDTH
         } else {
             window_width
         };
         let effective_height = if window_height <= 10.0 {
-            300.0
+            DEFAULT_WINDOW_HEIGHT
         } else {
             window_height
         };
 
         // Floor Boundary (bottom of window)
-        let floor = effective_height - self.pet_height;
+        let floor = effective_height - PET_HEIGHT;
         if self.y > floor {
             self.y = floor;
             self.velocity_y = 0.0;
@@ -162,17 +174,19 @@ impl PetState {
         // Left Boundary
         if self.x < 0.0 {
             self.x = 0.0;
-            self.velocity_x = -self.velocity_x * 0.8; // Bounce with loss of energy
+            self.velocity_x = -self.velocity_x * BOUNCE_FACTOR_X; // Bounce with loss of energy
             self.facing_direction = true;
         }
 
         // Right Boundary
-        let right_boundary = effective_width - self.pet_width;
+        let right_boundary = effective_width - PET_WIDTH;
         if self.x > right_boundary {
             self.x = right_boundary;
-            self.velocity_x = -self.velocity_x * 0.5; // Bounce with more loss of energy
+            self.velocity_x = -self.velocity_x * RIGHT_BOUNCE_FACTOR; // Bounce with more loss of energy
             self.facing_direction = false;
         }
+
+        const MOVEMENT_THRESHOLD: f32 = 5.0;
 
         if !self.is_on_ground {
             if self.velocity_y < 0.0 {
@@ -190,7 +204,7 @@ impl PetState {
                     AnimationState::FallingLeft
                 };
             }
-        } else if self.velocity_x.abs() > 5.0 {
+        } else if self.velocity_x.abs() > MOVEMENT_THRESHOLD {
             // Running
             self.animation_state = if self.velocity_x >= 0.0 {
                 AnimationState::RunningRight

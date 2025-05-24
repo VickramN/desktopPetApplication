@@ -38,6 +38,9 @@
       "all": true,
       "setIgnoreCursorEvents": true,
       "setIgnoreMouseEvents": true
+    },
+    "globalShortcut": {
+      "all": true
     }
   },
   "bundle": {
