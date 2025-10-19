@@ -16,8 +16,13 @@ use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORK
 // Default window dimensions to ensure consistency
 const DEFAULT_WINDOW_WIDTH: f32 = 400.0;
 const DEFAULT_WINDOW_HEIGHT: f32 = 300.0;
-const PET_WIDTH: f32 = 100.0; // Defined as constants to ensure consistency
-const PET_HEIGHT: f32 = 100.0;
+const PET_WIDTH: f32 = 32.0; // Defined as constants to ensure consistency
+const PET_HEIGHT: f32 = 30.0;
+
+//the pet height has to be roughly 83-85px to sit on top of the menu bar for macOS. Should be noted this may vary depending on model
+//Will have to test for Windows.
+
+//Should write a conditional to change pet height dependant on OS or chang boundary detection
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum AnimationState {

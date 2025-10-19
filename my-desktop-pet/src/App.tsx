@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { Window } from "@tauri-apps/api/window";
 // Import sprite sheet
 import spriteSheet from "./assets/Fox Sprite Sheet.png";
+import catSpriteSheet from "./assets/Cat Sprite Sheet.png"
+import Settings from "./Settings";
 
 // Constants for configuration
 const DEFAULT_WINDOW_WIDTH = 400;
@@ -23,40 +25,66 @@ function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [animationState, setAnimationState] = useState("idle-right");
   const [frameIndex, setFrameIndex] = useState(0);
+  const [currentPet, setCurrentPet] = useState("fox");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
   const windowRef = useRef<HTMLDivElement>(null);
   const animationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const positionUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+
+
+    //settings Panel
+  useEffect(()=> {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '.' && (e.ctrlKey || e.metaKey)) {
+        setSettingsOpen(true);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
 
   // Define animation sequences from the sprite sheet with correct coordinates
   const animations = {
     idle: {
       frames: [
-        [0, 0],     // First frame coordinates
-        [32, 0],    // Second frame coordinates
-        [64, 0],    // etc.
-        [96, 0],
-        [128, 0],
+        [0, 16],     // First frame coordinates
+        [32, 16],    // Second frame coordinates
+        [64, 16],    // etc.
+        [96, 16], 
       ],
       frameDuration: 200,
     },
     run: {
       frames: [
-        [0, 32],
-        [32, 32],
-        [64, 32],
-        [96, 32],
+        [0, 144],
+        [32, 144],
+        [64, 144],
+        [96, 144],
+        [128, 144],
+        [160, 144],
+        [192, 144],
+        [224, 144],
       ],
       frameDuration: 100,
     },
     jump: {
       frames: [
-        [0, 64],
-        [32, 64],
+        [0, 176],
+        [32, 176],
+        [64, 176],
       ],
       frameDuration: 150,
     },
     fall: {
-      frames: [[128, 64]],
+      frames: [
+        [96, 176],
+        [128, 176],
+        [128, 176],
+        [160, 176],
+      ],
       frameDuration: 150,
     },
   };
@@ -183,7 +211,7 @@ function App() {
 
     // Initial position update
     updatePosition();
-    
+
     // Set interval for regular updates
     positionUpdateIntervalRef.current = setInterval(updatePosition, UPDATE_INTERVAL_MS);
     
@@ -216,10 +244,10 @@ function App() {
     return {
       width: `${FRAME_WIDTH * DISPLAY_SCALE}px`,
       height: `${FRAME_HEIGHT * DISPLAY_SCALE}px`,
-      backgroundImage: `url(${spriteSheet})`,
+      backgroundImage: `url(${catSpriteSheet})`,
       backgroundPosition: `-${x}px -${y}px`,
-      backgroundSize: `${spriteSheet.width * DISPLAY_SCALE}px ${
-        spriteSheet.height * DISPLAY_SCALE
+      backgroundSize: `${catSpriteSheet.width * DISPLAY_SCALE}px ${
+        catSpriteSheet.height * DISPLAY_SCALE
       }px`,
       backgroundRepeat: "no-repeat",
       transform: isFlipped ? "scaleX(-1)" : "scaleX(1)",
@@ -268,6 +296,16 @@ function App() {
       >
         <div style={getSpriteStyle()} draggable={false} />
       </div>
+      <Settings
+      isOpen={settingsOpen}
+      onClose={() => setSettingsOpen(false)}
+      // currentPet={currentPet}
+      // isVisible={isVisible}
+      // onPetChange={setPetChange}
+      // onVisibilityChange={setVisibilityChange}
+      />
+
+
     </div>
   );
 }
