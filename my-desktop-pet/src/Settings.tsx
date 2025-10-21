@@ -24,8 +24,8 @@ export default function Settings({
     onVisibilityChange,
 }: SettingsProps) {
     const pets = [
-        { id: "fox", name: "Fox", image: foxSpriteSheet},
-        { id: "cat", name: "Cat", image: catSpriteSheet}
+        { id: "fox", name: "fox", image: foxSpriteSheet},
+        { id: "cat", name: "cat", image: catSpriteSheet}
     ];
 
     //Handle clicking outside to close
@@ -65,7 +65,10 @@ export default function Settings({
 
     const handleReset = async () => {
         try {
-            await invoke("reset_pet_position");
+            await invoke("reset_pet_position", {
+              windowWidth: window.innerWidth,
+              windowHeight: window.innerHeight
+            });
         } catch (error) {
             console.error("Failed to reset pet position:", error);
         }

@@ -25,7 +25,7 @@ function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [animationState, setAnimationState] = useState("idle-right");
   const [frameIndex, setFrameIndex] = useState(0);
-  const [currentPet, setCurrentPet] = useState("fox");
+  const [currentPet, setCurrentPet] = useState("cat");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const windowRef = useRef<HTMLDivElement>(null);
@@ -88,6 +88,44 @@ function App() {
       frameDuration: 150,
     },
   };
+
+  const foxAnimations = {
+   idle: {
+     frames: [
+       [0, 16],     
+       [32, 16],    
+       [64, 16],    
+       [96, 16],
+      [128, 16]
+     ],
+     frameDuration: 200,
+   },
+   run: {
+     frames: [
+       [0, 32],
+       [32, 32],
+       [64, 32],
+       [96, 32],
+       [128, 32],
+       [160, 32],
+       [192, 32],
+       [224, 32],
+     ],
+     frameDuration: 100,
+   },
+   jump: {
+     frames: [
+       [0, 64],
+       [32, 64],
+     ],
+     frameDuration: 150,
+   },
+   fall: {
+     frames: [[128, 64]],
+     frameDuration: 150,
+   },
+ };
+
 
   // Get window size with memoized callback to prevent unnecessary renders
   const getWindowSize = useCallback(async () => {
@@ -161,6 +199,7 @@ function App() {
 
     // Extract the base animation name without direction
     const baseAnimation = animationState.split("-")[0];
+    const animations = getCurrentAnimations();
     const config = animations[baseAnimation as keyof typeof animations];
 
     if (!config) return;
@@ -181,7 +220,7 @@ function App() {
         clearTimeout(animationTimerRef.current);
       }
     };
-  }, [frameIndex, animationState, isLoaded]);
+  }, [frameIndex, animationState, isLoaded, currentPet]);
 
   // Update pet position at regular intervals
   useEffect(() => {
@@ -223,10 +262,26 @@ function App() {
     };
   }, [windowSize, isLoaded, animationState]);
 
+  // Toggle click-through based on settings state
+    useEffect(() => {
+      const toggleClickThrough = async () => {
+        try {
+          await invoke("set_click_through", {
+            enabled: !settingsOpen
+          });
+        } catch (error) {
+          console.error("Failed to toggle click-through:", error);
+        }
+      }
+
+      toggleClickThrough();
+    }, [settingsOpen]);
+
   // Get the current frame from the animation sequence
   const getCurrentFrame = () => {
     // Extract the base animation name without direction
     const baseAnimation = animationState.split("-")[0];
+    const animations = getCurrentAnimations();
     const animation = animations[baseAnimation as keyof typeof animations];
 
     if (!animation) return [0, 0]; // Default frame
@@ -240,14 +295,15 @@ function App() {
   const getSpriteStyle = () => {
     const [x, y] = getCurrentFrame();
     const isFlipped = animationState.endsWith("-left");
+    const spriteSheet = getCurrentSpriteSheet();
 
     return {
       width: `${FRAME_WIDTH * DISPLAY_SCALE}px`,
       height: `${FRAME_HEIGHT * DISPLAY_SCALE}px`,
-      backgroundImage: `url(${catSpriteSheet})`,
+      backgroundImage: `url(${spriteSheet})`,
       backgroundPosition: `-${x}px -${y}px`,
-      backgroundSize: `${catSpriteSheet.width * DISPLAY_SCALE}px ${
-        catSpriteSheet.height * DISPLAY_SCALE
+      backgroundSize: `${spriteSheet.width * DISPLAY_SCALE}px ${
+        spriteSheet.height * DISPLAY_SCALE
       }px`,
       backgroundRepeat: "no-repeat",
       transform: isFlipped ? "scaleX(-1)" : "scaleX(1)",
@@ -273,6 +329,31 @@ function App() {
     }
   };
 
+  const handlePetChange = (petID: string) => {
+    setCurrentPet(petID);
+    setFrameIndex(0);
+  }
+  const getCurrentSpriteSheet = () =>{
+    switch(currentPet){
+      case "fox":
+        return spriteSheet;
+      case "cat":
+        return catSpriteSheet;
+      default:
+        return spriteSheet;
+    }
+  };
+
+  const getCurrentAnimations = () => {
+    switch(currentPet){
+      case "cat":
+        return animations;
+      case "fox":
+        return foxAnimations;
+      default:
+        return animations;
+    }
+  };
   return (
     <div
       className="w-full h-full"
@@ -299,10 +380,10 @@ function App() {
       <Settings
       isOpen={settingsOpen}
       onClose={() => setSettingsOpen(false)}
-      // currentPet={currentPet}
-      // isVisible={isVisible}
-      // onPetChange={setPetChange}
-      // onVisibilityChange={setVisibilityChange}
+      currentPet={currentPet}
+      isVisible={isVisible}
+      onPetChange={handlePetChange}
+      onVisibilityChange={setIsVisible}
       />
 
 

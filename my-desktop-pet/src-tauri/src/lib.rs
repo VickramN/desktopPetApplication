@@ -256,6 +256,17 @@ fn reset_pet_position(
     (pet.x, pet.y, pet.animation_state.to_string().to_string())
 }
 
+#[tauri::command]
+fn set_click_through(app: tauri::AppHandle, enabled: bool) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Err(e) = window.set_ignore_cursor_events(enabled) {
+            println!("Failed to set click-through: {:?}", e);
+        } else {
+            println!("Click-through set to: {}", enabled);
+        }
+    }
+}
+
 // Platform-specific window setup
 fn setup_window_properties(window: &tauri::WebviewWindow) {
     // Set up click-through functionality based on platform
@@ -300,7 +311,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_pet_movement,
-            reset_pet_position
+            reset_pet_position,
+            set_click_through
         ])
         .setup(|app| {
             // Get the main window
