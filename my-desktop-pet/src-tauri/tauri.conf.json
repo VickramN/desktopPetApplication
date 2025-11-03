@@ -21,17 +21,14 @@
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "focus": false
+        "focus": false,
+        "visible": true
       }
     ],
     "security": {
       "csp": null
     },
-    "macOSPrivateApi": true,
-    "trayIcon": {
-      "iconPath": "icons/32x32.png",
-      "iconAsTemplate": true
-    }
+    "macOSPrivateApi": true
   },
   "plugins":{
     "window":{
@@ -52,6 +49,7 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": []
   }
 }

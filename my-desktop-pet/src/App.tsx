@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Window } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 // Import sprite sheet
 import spriteSheet from "./assets/Fox Sprite Sheet.png";
 import catSpriteSheet from "./assets/Cat Sprite Sheet.png"
+import redPandaSpriteSheet from "./assets/Red Panda Sprite Sheet.png"
 import Settings from "./Settings";
 
 // Constants for configuration
@@ -12,9 +14,8 @@ const DEFAULT_WINDOW_HEIGHT = 300;
 const UPDATE_INTERVAL_MS = 50;
 
 // Frame size and display constants - adjusted to match the sprite sheet
-const FRAME_WIDTH = 8; // Actual pixel width of each frame
-const FRAME_HEIGHT = 8; // Actual pixel height of each frame
-const DISPLAY_SCALE = 3; // Scale factor for displaying the sprite
+const FRAME_WIDTH = 32; // Actual pixel width of each frame
+const FRAME_HEIGHT = 32; // Actual pixel height of each frame
 
 function App() {
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -50,40 +51,40 @@ function App() {
   const animations = {
     idle: {
       frames: [
-        [0, 16],     // First frame coordinates
-        [32, 16],    // Second frame coordinates
-        [64, 16],    // etc.
-        [96, 16], 
+        [0, 0],     // First frame coordinates
+        [32, 0],    // Second frame coordinates
+        [64, 0],    // etc.
+        [96, 0], 
       ],
       frameDuration: 200,
     },
     run: {
       frames: [
-        [0, 144],
-        [32, 144],
-        [64, 144],
-        [96, 144],
-        [128, 144],
-        [160, 144],
-        [192, 144],
-        [224, 144],
+        [0, 128],
+        [32, 128],
+        [64, 128],
+        [96, 128],
+        [128, 128],
+        [160, 128],
+        [192, 128],
+        [224, 128],
       ],
       frameDuration: 100,
     },
     jump: {
       frames: [
-        [0, 176],
-        [32, 176],
-        [64, 176],
+        [0, 160],
+        [32, 160],
+        [64, 160],
       ],
       frameDuration: 150,
     },
     fall: {
       frames: [
-        [96, 176],
-        [128, 176],
-        [128, 176],
-        [160, 176],
+        [96, 160],
+        [128, 160],
+        [128, 160],
+        [160, 160],
       ],
       frameDuration: 150,
     },
@@ -92,41 +93,95 @@ function App() {
   const foxAnimations = {
    idle: {
      frames: [
-       [0, 16],     
-       [32, 16],    
-       [64, 16],    
-       [96, 16],
-      [128, 16]
+       [0, 0],     
+       [32, 0],    
+       [64, 0],    
+       [96, 0],
+      [128, 0]
      ],
      frameDuration: 200,
    },
    run: {
      frames: [
-       [0, 32],
-       [32, 32],
-       [64, 32],
-       [96, 32],
-       [128, 32],
-       [160, 32],
-       [192, 32],
-       [224, 32],
+       [0, 64],
+       [32, 64],
+       [64, 64],
+       [96, 64],
+       [128, 64],
+       [160, 64],
+       [192, 64],
+       [224, 64],
      ],
      frameDuration: 100,
    },
    jump: {
      frames: [
-       [0, 64],
-       [32, 64],
+       [0, 96],
+       [32, 96],
+       [64, 96],
+       [96, 96],
+       [128, 96]
      ],
      frameDuration: 150,
    },
    fall: {
-     frames: [[128, 64]],
+     frames: [
+      [128, 96],
+      [160, 96],
+      [192, 96],
+      [224, 96],
+      [256, 96],
+      [288, 96],
+      [320, 96]
+    ],
      frameDuration: 150,
    },
  };
 
+  const redPandaAnimations = {
+    idle: {
+      frames: [
+        [0, 32],
+        [32, 32],
+        [64, 32],
+        [96, 32],
+        [128, 32],
+        [160, 32]
 
+      ],
+       frameDuration: 200,
+    },
+    run: {
+      frames: [
+        [0, 64],
+        [32, 64],
+        [64, 64],
+        [96, 64],
+        [128, 64],
+        [160, 64],
+        [192, 64],
+        [224, 64]
+      ],
+      frameDuration: 100
+    },
+    jump: {
+      frames: [
+        [0, 96],
+        [32, 96],
+        [64, 96],
+        [32, 64],
+        [64, 64]
+      ],
+      frameDuration: 150,
+    },
+    fall: {
+      frames: [
+        [96, 64],
+        [128, 64]
+      ],
+      frameDuration: 100,
+    }
+  };
   // Get window size with memoized callback to prevent unnecessary renders
   const getWindowSize = useCallback(async () => {
     try {
@@ -277,6 +332,26 @@ function App() {
       toggleClickThrough();
     }, [settingsOpen]);
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    
+    const setupTrayListener = async () => {
+      try{
+        unlisten = await listen('open-settings', () => {
+          console.log("Opening settings from tray icon");
+          setSettingsOpen(true);
+        });
+        console.log("Tray listener setup complete");
+    } catch (error) {
+      console.error("Failed to setup tray listener");
+    }
+  };
+  setupTrayListener();
+
+  return () => {
+    if (unlisten) unlisten();
+  };
+}, []);
   // Get the current frame from the animation sequence
   const getCurrentFrame = () => {
     // Extract the base animation name without direction
@@ -298,12 +373,12 @@ function App() {
     const spriteSheet = getCurrentSpriteSheet();
 
     return {
-      width: `${FRAME_WIDTH * DISPLAY_SCALE}px`,
-      height: `${FRAME_HEIGHT * DISPLAY_SCALE}px`,
+      width: `${FRAME_WIDTH}px`,
+      height: `${FRAME_HEIGHT}px`,
       backgroundImage: `url(${spriteSheet})`,
       backgroundPosition: `-${x}px -${y}px`,
-      backgroundSize: `${spriteSheet.width * DISPLAY_SCALE}px ${
-        spriteSheet.height * DISPLAY_SCALE
+      backgroundSize: `${spriteSheet.width}px ${
+        spriteSheet.height
       }px`,
       backgroundRepeat: "no-repeat",
       transform: isFlipped ? "scaleX(-1)" : "scaleX(1)",
@@ -339,6 +414,8 @@ function App() {
         return spriteSheet;
       case "cat":
         return catSpriteSheet;
+      case "red panda":
+        return redPandaSpriteSheet;
       default:
         return spriteSheet;
     }
@@ -350,6 +427,8 @@ function App() {
         return animations;
       case "fox":
         return foxAnimations;
+      case "red panda":
+        return redPandaAnimations;
       default:
         return animations;
     }
@@ -367,7 +446,8 @@ function App() {
       }}
       onDoubleClick={handleReset} // Double click to reset pet position
     >
-      <div
+      {isVisible && (
+        <div
         className="absolute"
         style={{
           left: `${position.x}px`,
@@ -377,6 +457,7 @@ function App() {
       >
         <div style={getSpriteStyle()} draggable={false} />
       </div>
+    )}
       <Settings
       isOpen={settingsOpen}
       onClose={() => setSettingsOpen(false)}

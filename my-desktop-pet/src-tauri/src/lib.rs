@@ -1,9 +1,12 @@
 use rand::Rng;
 use std::sync::Mutex;
 use std::time::Instant;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri::Manager;
 use tauri::PhysicalSize;
 use tauri::State;
+use tauri::Emitter;
 
 #[cfg(target_os = "macos")]
 use objc::{msg_send, sel, sel_impl};
@@ -268,6 +271,7 @@ fn set_click_through(app: tauri::AppHandle, enabled: bool) {
 }
 
 // Platform-specific window setup
+#[allow(unexpected_cfgs)]
 fn setup_window_properties(window: &tauri::WebviewWindow) {
     // Set up click-through functionality based on platform
 
@@ -379,6 +383,33 @@ pub fn run() {
             } else {
                 println!("Warning: Could not find main window");
             }
+            
+            let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&settings, &quit])?;
+
+            let _tray = TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .on_menu_event(|app, event| {
+                    match event.id.as_ref(){
+                        "settings"=> {
+                            println!("Settings clicked from tray");
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.set_ignore_cursor_events(false);
+                                let _ = window.emit("open-settings", ());
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            println!("Quit clicked from tray");
+                            app.exit(0);
+                        }
+                        _ => {}
+                     }
+                })
+                .build(app)?;
+
 
             Ok(())
         })

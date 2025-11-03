@@ -2,8 +2,9 @@ import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 //Import PetSprite sheets 
-import foxSpriteSheet from "./assets/Fox Sprite Sheet.png";
-import catSpriteSheet from "./assets/Cat Sprite Sheet.png"; 
+import foxSpriteSheet from "./assets/FoxIcon.png";
+import redPandaSpriteSheet from "./assets/redPandaIcon.png";
+import catIcon from "./assets/catIcon.png";
 
 
 interface SettingsProps {
@@ -25,7 +26,8 @@ export default function Settings({
 }: SettingsProps) {
     const pets = [
         { id: "fox", name: "fox", image: foxSpriteSheet},
-        { id: "cat", name: "cat", image: catSpriteSheet}
+        { id: "cat", name: "cat", image: catIcon},
+        { id: "red panda", name: "panda", image: redPandaSpriteSheet}
     ];
 
     //Handle clicking outside to close
