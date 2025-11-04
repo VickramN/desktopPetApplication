@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { PetType } from "./App";
 
 //Import PetSprite sheets 
 import foxSpriteSheet from "./assets/FoxIcon.png";
@@ -12,7 +13,7 @@ interface SettingsProps {
     onClose: () => void;
     currentPet: string;
     isVisible: boolean;
-    onPetChange: (pet: string) => void;
+    onPetChange: (pet: PetType) => void;
     onVisibilityChange: (visible: boolean) => void;
 }
 
@@ -25,9 +26,9 @@ export default function Settings({
     onVisibilityChange,
 }: SettingsProps) {
     const pets = [
-        { id: "fox", name: "fox", image: foxSpriteSheet},
-        { id: "cat", name: "cat", image: catIcon},
-        { id: "red panda", name: "panda", image: redPandaSpriteSheet}
+        { id: "fox" as PetType, name: "fox", image: foxSpriteSheet},
+        { id: "cat" as PetType, name: "cat", image: catIcon},
+        { id: "red panda" as PetType, name: "panda", image: redPandaSpriteSheet}
     ];
 
     //Handle clicking outside to close
