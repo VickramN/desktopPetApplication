@@ -402,7 +402,17 @@ pub fn run() {
                             }
                         }
                         "quit" => {
-                            println!("Quit clicked from tray");
+                            
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.close();
+                            }
+
+                            if let Some(window) = app.get_webview_window("pet"){
+                                let _ = window.close();
+                            }
+
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+
                             app.exit(0);
                         }
                         _ => {}
