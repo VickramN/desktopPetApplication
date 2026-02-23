@@ -14,15 +14,15 @@
       {
         "fullscreen": false,
         "title": "my-desktop-pet",
-        "width": 1200,
-        "height": 800,
+        "width": 1920,
+        "height": 1032,
         "resizable": false,
         "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "focus": false,
-        "visible": true
+        "visible": false
       }
     ],
     "security": {
@@ -30,8 +30,8 @@
     },
     "macOSPrivateApi": true
   },
-  "plugins":{
-    "window":{
+  "plugins": {
+    "window": {
       "all": true,
       "setIgnoreCursorEvents": true,
       "setIgnoreMouseEvents": true

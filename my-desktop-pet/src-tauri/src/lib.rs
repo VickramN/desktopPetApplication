@@ -308,7 +308,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(AppState {
-            pet: Mutex::new(PetState::new(400.0, 300.0)),
+            pet: Mutex::new(PetState::new(1920.0, 1032.0)),
         })
         .invoke_handler(tauri::generate_handler![
             get_pet_movement,
@@ -348,7 +348,8 @@ pub fn run() {
                             )))
                             .expect("Failed to position window");
 
-                        println!("Resized window to match work area: {}x{}", width, height);
+                        println!("Windows: Configured to work area {}x{} at ({}, {})", 
+                            width, height, work_area.left, work_area.top);
                     }
                 }
 
@@ -377,6 +378,9 @@ pub fn run() {
                 }
 
                 setup_window_properties(&window);
+
+                window.show().expect("Failed to show window");
+                println!("Window is now visible and ready")
             } else {
                 println!("Warning: Could not find main window");
             }
@@ -399,7 +403,17 @@ pub fn run() {
                             }
                         }
                         "quit" => {
-                            println!("Quit clicked from tray");
+                            
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.close();
+                            }
+
+                            if let Some(window) = app.get_webview_window("pet"){
+                                let _ = window.close();
+                            }
+
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+
                             app.exit(0);
                         }
                         _ => {}
