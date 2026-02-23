@@ -1,7 +1,7 @@
 [package]
 name = "my-desktop-pet"
 version = "0.1.0"
-description = "A Tauri App"
+description = "Desktop Pet Application"
 authors = ["Vickram S Nauth"]
 edition = "2021"
 
@@ -15,11 +15,11 @@ name = "my_desktop_pet_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.5", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [ "tray-icon", "macos-private-api"] }
-tauri-plugin-opener = "2"
+tauri = { version = "2.5", features = [ "tray-icon", "macos-private-api"] }
+tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rand = "0.8"
