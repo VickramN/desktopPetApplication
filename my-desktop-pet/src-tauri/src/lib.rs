@@ -335,6 +335,8 @@ pub fn run() {
                         let width = work_area.right - work_area.left;
                         let height = work_area.bottom - work_area.top;
 
+                        const BORDER_FIX: i32 = 8;
+
                         // Set window size to match work area
                         window
                             .set_size(PhysicalSize::new(width as u32, height as u32))
@@ -343,7 +345,7 @@ pub fn run() {
                         // Position at the top-left corner of the work area
                         window
                             .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-                                work_area.left,
+                                work_area.left + BORDER_FIX,
                                 work_area.top,
                             )))
                             .expect("Failed to position window");
