@@ -14,47 +14,47 @@ const DEFAULT_WINDOW_HEIGHT = 1032;
 const UPDATE_INTERVAL_MS = 50;
 
 // Frame size and display constants - adjusted to match the sprite sheet
-const FRAME_WIDTH = 32; // Actual pixel width of each frame
-const FRAME_HEIGHT = 32; // Actual pixel height of each frame
+const FRAME_WIDTH = 64; // Actual pixel width of each frame
+const FRAME_HEIGHT = 64; // Actual pixel height of each frame
 
 // Animation Sequence coordinates
 const CAT_ANIMATIONS = {
   idle: {
     frames: [
       [0, 0],
-      [32, 0],
       [64, 0],
-      [96, 0],
+      [128, 0],
+      [192, 0],
     ],
     frameDuration: 200,
   },
   run: {
     frames: [
-      [0, 128],
-      [32, 128],
-      [64, 128],
-      [96, 128],
-      [128, 128],
-      [160, 128],
-      [192, 128],
-      [224, 128],
+      [0, 256],
+      [64, 256],
+      [128, 256],
+      [192, 256],
+      [256, 256],
+      [320, 256],
+      [384, 256],
+      [448, 256],
     ],
     frameDuration: 100,
   },
   jump: {
     frames: [
-      [0, 160],
-      [32, 160],
-      [64, 160],
+      [0, 320],
+      [64, 320],
+      [128, 320],
     ],
     frameDuration: 150,
   },
   fall: {
     frames: [
-      [96, 160],
-      [128, 160],
-      [128, 160],
-      [160, 160],
+      [192, 320],
+      [256, 320],
+      [256, 320],
+      [320, 320],
     ],
     frameDuration: 150,
   },
@@ -64,45 +64,45 @@ const FOX_ANIMATIONS = {
   idle: {
     frames: [
       [0, 0],
-      [32, 0],
       [64, 0],
-      [96, 0],
       [128, 0],
+      [192, 0],
+      [256, 0],
     ],
     frameDuration: 200,
   },
   run: {
     frames: [
-      [0, 64],
-      [32, 64],
-      [64, 64],
-      [96, 64],
-      [128, 64],
-      [160, 64],
-      [192, 64],
-      [224, 64],
+      [0, 128],
+      [64, 128],
+      [128, 128],
+      [192, 128],
+      [256, 128],
+      [320, 128],
+      [384, 128],
+      [448, 128],
     ],
     frameDuration: 100,
   },
   jump: {
     frames: [
-      [0, 96],
-      [32, 96],
-      [64, 96],
-      [96, 96],
-      [128, 96],
+      [0, 192],
+      [64, 192],
+      [128, 192],
+      [192, 192],
+      [256, 192],
     ],
     frameDuration: 150,
   },
   fall: {
     frames: [
-      [128, 96],
-      [160, 96],
-      [192, 96],
-      [224, 96],
-      [256, 96],
-      [288, 96],
-      [320, 96],
+      [256, 192],
+      [320, 192],
+      [384, 192],
+      [448, 192],
+      [512, 192],
+      [576, 192],
+      [640, 192],
     ],
     frameDuration: 150,
   },
@@ -111,42 +111,42 @@ const FOX_ANIMATIONS = {
 const RED_PANDA_ANIMATIONS = {
   idle: {
     frames: [
-      [0, 32],
-      [32, 32],
-      [64, 32],
-      [96, 32],
-      [128, 32],
-      [160, 32],
+      [0, 64],
+      [64, 64],
+      [128, 64],
+      [192, 64],
+      [256, 64],
+      [320, 64],
     ],
     frameDuration: 200,
   },
   run: {
     frames: [
-      [0, 64],
-      [32, 64],
-      [64, 64],
-      [96, 64],
-      [128, 64],
-      [160, 64],
-      [192, 64],
-      [224, 64],
+      [0, 128],
+      [64, 128],
+      [128, 128],
+      [192, 128],
+      [256, 128],
+      [320, 128],
+      [384, 128],
+      [448, 128],
     ],
     frameDuration: 100,
   },
   jump: {
     frames: [
-      [0, 96],
-      [32, 96],
-      [64, 96],
-      [32, 64],
-      [64, 64],
+      [0, 192],
+      [64, 192],
+      [128, 192],
+      [192, 128],
+      [256, 128],
     ],
     frameDuration: 150,
   },
   fall: {
     frames: [
-      [96, 64],
-      [128, 64],
+      [192, 128],
+      [256, 128],
     ],
     frameDuration: 100,
   },
@@ -279,7 +279,7 @@ function App() {
 
     // Extract the base animation name without direction
     const baseAnimation = animationState.split(
-      "-"
+      "-",
     )[0] as keyof typeof currentAnimations;
     const config = currentAnimations[baseAnimation];
 
@@ -317,7 +317,7 @@ function App() {
           {
             windowWidth: windowSize.width,
             windowHeight: windowSize.height,
-          }
+          },
         );
 
         setPosition({ x, y });
@@ -338,7 +338,7 @@ function App() {
     // Set interval for regular updates
     positionUpdateIntervalRef.current = setInterval(
       updatePosition,
-      UPDATE_INTERVAL_MS
+      UPDATE_INTERVAL_MS,
     );
 
     // Clean up on unmount
@@ -389,7 +389,7 @@ function App() {
   // Get the current frame from the animation sequence
   const getCurrentFrame = useCallback(() => {
     const baseAnimation = animationState.split(
-      "-"
+      "-",
     )[0] as keyof typeof currentAnimations;
     const animation = currentAnimations[baseAnimation];
 
@@ -426,7 +426,7 @@ function App() {
         {
           windowWidth: windowSize.width,
           windowHeight: windowSize.height,
-        }
+        },
       );
 
       setPosition({ x, y });

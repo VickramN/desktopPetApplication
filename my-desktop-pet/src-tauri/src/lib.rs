@@ -19,8 +19,8 @@ use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORK
 // Default window dimensions to ensure consistency
 const DEFAULT_WINDOW_WIDTH: f32 = 400.0;
 const DEFAULT_WINDOW_HEIGHT: f32 = 300.0;
-const PET_WIDTH: f32 = 32.0; // Defined as constants to ensure consistency
-const PET_HEIGHT: f32 = 30.0;
+const PET_WIDTH: f32 = 64.0; // Defined as constants to ensure consistency
+const PET_HEIGHT: f32 = 64.0;
 
 
 
@@ -63,6 +63,17 @@ struct PetState {
     window_height: f32,
     animation_state: AnimationState,
     facing_direction: bool, // true for right, false for left
+    idle_timer: f32,       // how long we've been idle
+    idle_duration: f32,    // how long to stay idle before moving
+    action_timer: f32,     // how long current walk/run action lasts
+    current_action: PetAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PetAction {
+    Idling,
+    Walking,
+    Running,
 }
 
 impl PetState {
@@ -95,136 +106,160 @@ impl PetState {
             window_height: effective_height,
             animation_state: AnimationState::IdleRight,
             facing_direction: true,
+            idle_timer: 0.0,
+            idle_duration: 2.0,   // start with a 2 second idle
+            action_timer: 0.0,
+            current_action: PetAction::Idling,
         }
     }
 
     fn update(&mut self, window_width: f32, window_height: f32) {
-        // Only log when window size actually changes to reduce spam
-        if (self.window_width - window_width).abs() > 1.0
-            || (self.window_height - window_height).abs() > 1.0
-        {
-            println!(
-                "Window size changed: {}x{} -> {}x{}",
-                self.window_width, self.window_height, window_width, window_height
-            );
-            self.window_width = window_width;
-            self.window_height = window_height;
-        }
+    if (self.window_width - window_width).abs() > 1.0
+        || (self.window_height - window_height).abs() > 1.0
+    {
+        self.window_width = window_width;
+        self.window_height = window_height;
+    }
 
-        let now = Instant::now();
-        let mut delta_time = now.duration_since(self.last_update).as_secs_f32();
-        self.last_update = now;
+    let now = Instant::now();
+    let mut delta_time = now.duration_since(self.last_update).as_secs_f32();
+    self.last_update = now;
+    delta_time = delta_time.min(0.05);
 
-        // Cap delta time to prevent jumps after application freeze
-        delta_time = delta_time.min(0.05);
+    const GRAVITY: f32 = 980.0;
+    const JUMP_FORCE: f32 = -480.0;
+    const WALK_SPEED: f32 = 80.0;
+    const RUN_SPEED: f32 = 200.0;
+    const FRICTION: f32 = 6.0;        // ground deceleration multiplier
+    const MOVEMENT_THRESHOLD: f32 = 8.0;
 
-        const GRAVITY: f32 = 980.0;
-        const JUMP_FORCE: f32 = -500.0;
-        const MAX_SPEED_X: f32 = 200.0;
-        const BOUNCE_FACTOR_X: f32 = 0.8; // Energy retention on x-bounce
-        const RIGHT_BOUNCE_FACTOR: f32 = 0.5; // More energy loss on right boundary
+    let effective_width = if window_width <= 10.0 { DEFAULT_WINDOW_WIDTH } else { window_width };
+    let effective_height = if window_height <= 10.0 { DEFAULT_WINDOW_HEIGHT } else { window_height };
 
-        if !self.is_on_ground {
-            self.velocity_y += GRAVITY * delta_time;
-        }
+    // --- Gravity ---
+    if !self.is_on_ground {
+        self.velocity_y += GRAVITY * delta_time;
+    }
 
-        let mut rng = rand::thread_rng();
+    let mut rng = rand::thread_rng();
 
-        if self.is_on_ground && rng.gen_bool(0.01) {
-            self.velocity_y = JUMP_FORCE;
+    // --- Ground behaviour state machine ---
+    if self.is_on_ground {
+        match self.current_action {
+            PetAction::Idling => {
+                // Apply friction to bleed off any residual velocity
+                self.velocity_x *= (1.0 - FRICTION * delta_time).max(0.0);
 
-            if self.facing_direction {
-                self.velocity_x = rng.gen_range(0.0..MAX_SPEED_X);
-            } else {
-                self.velocity_x = rng.gen_range(-MAX_SPEED_X..0.0);
+                self.idle_timer += delta_time;
+                if self.idle_timer >= self.idle_duration {
+                    // Decide next action
+                    self.idle_timer = 0.0;
+                    let roll: f32 = rng.gen();
+                    if roll < 0.15 {
+                        // Jump
+                        self.velocity_y = JUMP_FORCE;
+                        let speed = rng.gen_range(60.0..RUN_SPEED);
+                        self.velocity_x = if self.facing_direction { speed } else { -speed };
+                        self.is_on_ground = false;
+                        self.current_action = PetAction::Idling; // reset after landing
+                    } else if roll < 0.55 {
+                        // Walk
+                        self.current_action = PetAction::Walking;
+                        self.action_timer = rng.gen_range(1.5..4.0);
+                        // Randomly pick a direction
+                        self.facing_direction = rng.gen_bool(0.5);
+                    } else {
+                        // Run
+                        self.current_action = PetAction::Running;
+                        self.action_timer = rng.gen_range(0.8..2.5);
+                        self.facing_direction = rng.gen_bool(0.5);
+                    }
+                    // Next idle will last 1–4 seconds
+                    self.idle_duration = rng.gen_range(1.0..4.0);
+                }
             }
 
-            if rng.gen_bool(0.1) {
-                self.velocity_x *= -0.5;
+            PetAction::Walking => {
+                let target_vx = if self.facing_direction { WALK_SPEED } else { -WALK_SPEED };
+                // Smoothly accelerate toward walk speed
+                self.velocity_x += (target_vx - self.velocity_x) * (FRICTION * delta_time).min(1.0);
+
+                self.action_timer -= delta_time;
+                if self.action_timer <= 0.0 {
+                    self.current_action = PetAction::Idling;
+                    self.idle_timer = 0.0;
+                }
             }
 
-            self.is_on_ground = false;
-        }
+            PetAction::Running => {
+                let target_vx = if self.facing_direction { RUN_SPEED } else { -RUN_SPEED };
+                // Faster acceleration for running
+                self.velocity_x += (target_vx - self.velocity_x) * (FRICTION * 1.5 * delta_time).min(1.0);
 
-        // Update Position
-        self.x += self.velocity_x * delta_time;
-        self.y += self.velocity_y * delta_time;
-
-        // Get effective window dimensions with non-zero check
-        let effective_width = if window_width <= 10.0 {
-            DEFAULT_WINDOW_WIDTH
-        } else {
-            window_width
-        };
-        let effective_height = if window_height <= 10.0 {
-            DEFAULT_WINDOW_HEIGHT
-        } else {
-            window_height
-        };
-
-        // Floor Boundary (bottom of window)
-        let floor = effective_height - PET_HEIGHT;
-        if self.y > floor {
-            self.y = floor;
-            self.velocity_y = 0.0;
-            self.is_on_ground = true;
-        }
-
-        // Ceiling Boundary (top of window)
-        if self.y < 0.0 {
-            self.y = 0.0;
-            self.velocity_y = 0.0;
-        }
-
-        // Left Boundary
-        if self.x < 0.0 {
-            self.x = 0.0;
-            self.velocity_x = -self.velocity_x * BOUNCE_FACTOR_X; // Bounce with loss of energy
-            self.facing_direction = true;
-        }
-
-        // Right Boundary
-        let right_boundary = effective_width - PET_WIDTH;
-        if self.x > right_boundary {
-            self.x = right_boundary;
-            self.velocity_x = -self.velocity_x * RIGHT_BOUNCE_FACTOR; // Bounce with more loss of energy
-            self.facing_direction = false;
-        }
-
-        const MOVEMENT_THRESHOLD: f32 = 5.0;
-
-        if !self.is_on_ground {
-            if self.velocity_y < 0.0 {
-                // Going up (jumping)
-                self.animation_state = if self.facing_direction {
-                    AnimationState::JumpingRight
-                } else {
-                    AnimationState::JumpingLeft
-                };
-            } else {
-                // Coming down (falling)
-                self.animation_state = if self.facing_direction {
-                    AnimationState::FallingRight
-                } else {
-                    AnimationState::FallingLeft
-                };
+                self.action_timer -= delta_time;
+                if self.action_timer <= 0.0 {
+                    self.current_action = PetAction::Idling;
+                    self.idle_timer = 0.0;
+                }
             }
-        } else if self.velocity_x.abs() > MOVEMENT_THRESHOLD {
-            // Running
-            self.animation_state = if self.velocity_x >= 0.0 {
-                AnimationState::RunningRight
-            } else {
-                AnimationState::RunningLeft
-            };
-        } else {
-            // Idle
-            self.animation_state = if self.facing_direction {
-                AnimationState::IdleRight
-            } else {
-                AnimationState::IdleLeft
-            };
         }
     }
+
+    // --- Position update ---
+    self.x += self.velocity_x * delta_time;
+    self.y += self.velocity_y * delta_time;
+
+    // --- Boundaries ---
+    let floor = effective_height - PET_HEIGHT;
+    if self.y >= floor {
+        self.y = floor;
+        self.velocity_y = 0.0;
+        if !self.is_on_ground {
+            // Just landed — go idle briefly
+            self.is_on_ground = true;
+            self.current_action = PetAction::Idling;
+            self.idle_timer = 0.0;
+            self.idle_duration = rng.gen_range(0.5..2.0);
+        }
+    }
+
+    if self.y < 0.0 {
+        self.y = 0.0;
+        self.velocity_y = 0.0;
+    }
+
+    if self.x < 0.0 {
+        self.x = 0.0;
+        self.velocity_x = self.velocity_x.abs() * 0.5;
+        self.facing_direction = true;
+        if self.current_action != PetAction::Idling {
+            // Reverse direction instead of stopping
+            self.facing_direction = true;
+        }
+    }
+
+    let right_boundary = effective_width - PET_WIDTH;
+    if self.x > right_boundary {
+        self.x = right_boundary;
+        self.velocity_x = -self.velocity_x.abs() * 0.5;
+        self.facing_direction = false;
+    }
+
+    // --- Animation state ---
+    if !self.is_on_ground {
+        self.animation_state = if self.velocity_y < 0.0 {
+            if self.facing_direction { AnimationState::JumpingRight } else { AnimationState::JumpingLeft }
+        } else {
+            if self.facing_direction { AnimationState::FallingRight } else { AnimationState::FallingLeft }
+        };
+    } else if self.velocity_x.abs() > RUN_SPEED * 0.6 {
+        self.animation_state = if self.velocity_x > 0.0 { AnimationState::RunningRight } else { AnimationState::RunningLeft };
+    } else if self.velocity_x.abs() > MOVEMENT_THRESHOLD {
+        self.animation_state = if self.velocity_x > 0.0 { AnimationState::RunningRight } else { AnimationState::RunningLeft };
+    } else {
+        self.animation_state = if self.facing_direction { AnimationState::IdleRight } else { AnimationState::IdleLeft };
+    }
+}
 }
 
 struct AppState {
