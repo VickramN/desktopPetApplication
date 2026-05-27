@@ -17,6 +17,28 @@ const UPDATE_INTERVAL_MS = 50;
 const FRAME_WIDTH = 64; // Actual pixel width of each frame
 const FRAME_HEIGHT = 64; // Actual pixel height of each frame
 
+type AnimationConfig = {
+  frames: readonly (readonly [number, number])[];
+  frameDuration: number;
+};
+
+const getBaseAnimation = (state: string) => {
+  return state.replace(/-(left|right)$/, "");
+};
+
+const getAnimationConfig = (
+  animations: unknown,
+  animationState: string,
+): AnimationConfig => {
+  const animationMap = animations as Record<string, AnimationConfig>;
+  const baseAnimation = getBaseAnimation(animationState);
+
+  // Not every pet sprite sheet has every animation.
+  // If Rust asks for an idle variant the current pet does not have,
+  // safely fall back to that pet's normal idle animation.
+  return animationMap[baseAnimation] ?? animationMap.idle;
+};
+
 // Animation Sequence coordinates
 const CAT_ANIMATIONS = {
   idle: {
@@ -27,6 +49,26 @@ const CAT_ANIMATIONS = {
       [192, 0],
     ],
     frameDuration: 200,
+  },
+  // Extra idle variants. Adjust these coordinates after confirming the exact
+  // sprite rows you want to use from the cat sprite sheet.
+  "idle-alt-1": {
+    frames: [
+      [0, 64],
+      [64, 64],
+      [128, 64],
+      [192, 64],
+    ],
+    frameDuration: 220,
+  },
+  "idle-alt-2": {
+    frames: [
+      [0, 128],
+      [64, 128],
+      [128, 128],
+      [192, 128],
+    ],
+    frameDuration: 220,
   },
   run: {
     frames: [
@@ -58,6 +100,15 @@ const CAT_ANIMATIONS = {
     ],
     frameDuration: 150,
   },
+  sleep: {
+    frames: [
+      [0, 384],
+      [64, 384],
+      [128, 384],
+      [192, 384],
+    ],
+    frameDuration: 400,
+  },
 } as const;
 
 const FOX_ANIMATIONS = {
@@ -70,6 +121,18 @@ const FOX_ANIMATIONS = {
       [256, 0],
     ],
     frameDuration: 200,
+  },
+  // Extra idle variants. Fox currently has fewer idle variants defined than
+  // cat/red panda, and that is okay because unsupported ones fall back to idle.
+  "idle-alt-1": {
+    frames: [
+      [0, 64],
+      [64, 64],
+      [128, 64],
+      [192, 64],
+      [256, 64],
+    ],
+    frameDuration: 220,
   },
   run: {
     frames: [
@@ -106,6 +169,17 @@ const FOX_ANIMATIONS = {
     ],
     frameDuration: 150,
   },
+  sleep: {
+    frames: [
+      [0, 320],
+      [64, 320],
+      [128, 320],
+      [192, 320],
+      [256, 320],
+      [320, 320],
+    ],
+    frameDuration: 400,
+  },
 } as const;
 
 const RED_PANDA_ANIMATIONS = {
@@ -119,6 +193,29 @@ const RED_PANDA_ANIMATIONS = {
       [320, 64],
     ],
     frameDuration: 200,
+  },
+  // Extra idle variants. Adjust these coordinates after confirming the exact
+  // sprite rows you want to use from the red panda sprite sheet.
+  "idle-alt-1": {
+    frames: [
+      [0, 0],
+      [64, 0],
+      [128, 0],
+      [192, 0],
+      [256, 0],
+      [320, 0],
+    ],
+    frameDuration: 220,
+  },
+  "idle-alt-2": {
+    frames: [
+      [0, 256],
+      [64, 256],
+      [128, 256],
+      [192, 256],
+      [256, 256],
+    ],
+    frameDuration: 240,
   },
   run: {
     frames: [
@@ -149,6 +246,19 @@ const RED_PANDA_ANIMATIONS = {
       [256, 128],
     ],
     frameDuration: 100,
+  },
+  sleep: {
+    frames: [
+      [0, 384],
+      [64, 384],
+      [128, 384],
+      [192, 384],
+      [256, 384],
+      [320, 384],
+      [384, 384],
+      [448, 384],
+    ],
+    frameDuration: 400,
   },
 } as const;
 
@@ -277,13 +387,7 @@ function App() {
   useEffect(() => {
     if (!isLoaded) return;
 
-    // Extract the base animation name without direction
-    const baseAnimation = animationState.split(
-      "-",
-    )[0] as keyof typeof currentAnimations;
-    const config = currentAnimations[baseAnimation];
-
-    if (!config) return;
+    const config = getAnimationConfig(currentAnimations, animationState);
 
     // Clear any existing timer
     if (animationTimerRef.current) {
@@ -388,12 +492,7 @@ function App() {
 
   // Get the current frame from the animation sequence
   const getCurrentFrame = useCallback(() => {
-    const baseAnimation = animationState.split(
-      "-",
-    )[0] as keyof typeof currentAnimations;
-    const animation = currentAnimations[baseAnimation];
-
-    if (!animation) return [0, 0];
+    const animation = getAnimationConfig(currentAnimations, animationState);
 
     const safeIndex = Math.min(frameIndex, animation.frames.length - 1);
     return animation.frames[safeIndex];

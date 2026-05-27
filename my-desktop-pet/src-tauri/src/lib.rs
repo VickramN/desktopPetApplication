@@ -28,6 +28,12 @@ const PET_HEIGHT: f32 = 64.0;
 enum AnimationState {
     IdleRight,
     IdleLeft,
+    SleepingRight,
+    SleepingLeft,
+    IdleAlt1Right,
+    IdleAlt1Left,
+    IdleAlt2Right,
+    IdleAlt2Left,
     RunningRight,
     RunningLeft,
     JumpingRight,
@@ -41,6 +47,12 @@ impl AnimationState {
         match self {
             AnimationState::IdleRight => "idle-right",
             AnimationState::IdleLeft => "idle-left",
+            AnimationState::SleepingRight => "sleep-right",
+            AnimationState::SleepingLeft => "sleep-left",
+            AnimationState::IdleAlt1Right => "idle-alt-1-right",
+            AnimationState::IdleAlt1Left => "idle-alt-1-left",
+            AnimationState::IdleAlt2Right => "idle-alt-2-right",
+            AnimationState::IdleAlt2Left => "idle-alt-2-left",
             AnimationState::RunningRight => "run-right",
             AnimationState::RunningLeft => "run-left",
             AnimationState::JumpingRight => "jump-right",
@@ -74,6 +86,7 @@ enum PetAction {
     Idling,
     Walking,
     Running,
+    Sleeping,
 }
 
 impl PetState {
@@ -111,6 +124,19 @@ impl PetState {
             action_timer: 0.0,
             current_action: PetAction::Idling,
         }
+    }
+
+    fn choose_idle_animation(&mut self) {
+        let mut rng = rand::thread_rng();
+        let roll: f32 = rng.gen();
+
+        self.animation_state = if roll < 0.70 {
+            if self.facing_direction { AnimationState::IdleRight } else { AnimationState::IdleLeft }
+        } else if roll < 0.90 {
+            if self.facing_direction { AnimationState::IdleAlt1Right } else { AnimationState::IdleAlt1Left }
+        } else {
+            if self.facing_direction { AnimationState::IdleAlt2Right } else { AnimationState::IdleAlt2Left }
+        };
     }
 
     fn update(&mut self, window_width: f32, window_height: f32) {
@@ -155,7 +181,19 @@ impl PetState {
                     // Decide next action
                     self.idle_timer = 0.0;
                     let roll: f32 = rng.gen();
-                    if roll < 0.15 {
+                    if roll < 0.05{
+                        self.current_action = PetAction::Sleeping;
+                        self.action_timer = rng.gen_range(20.0..30.0);
+
+                        self.velocity_x = 0.0;
+
+                        self.animation_state = if self.facing_direction {
+                            AnimationState::SleepingRight
+                        } else {
+                            AnimationState:: SleepingLeft
+                        };
+                    } 
+                    else if roll < 0.20 {
                         // Jump
                         self.velocity_y = JUMP_FORCE;
                         let speed = rng.gen_range(60.0..RUN_SPEED);
@@ -188,6 +226,7 @@ impl PetState {
                 if self.action_timer <= 0.0 {
                     self.current_action = PetAction::Idling;
                     self.idle_timer = 0.0;
+                    self.choose_idle_animation();
                 }
             }
 
@@ -200,6 +239,25 @@ impl PetState {
                 if self.action_timer <= 0.0 {
                     self.current_action = PetAction::Idling;
                     self.idle_timer = 0.0;
+                    self.choose_idle_animation();
+                }
+            }
+
+            PetAction::Sleeping => {
+                self.velocity_x = 0.0;
+
+                self.action_timer -= delta_time;
+
+                self.animation_state = if self.facing_direction {
+                    AnimationState::SleepingRight
+                } else {
+                    AnimationState::SleepingLeft
+                };
+
+                if self.action_timer <= 0.0 {
+                    self.current_action = PetAction::Idling;
+                    self.idle_timer = 0.0;
+                    self.idle_duration = rng.gen_range(1.0..4.0);
                 }
             }
         }
@@ -220,6 +278,7 @@ impl PetState {
             self.current_action = PetAction::Idling;
             self.idle_timer = 0.0;
             self.idle_duration = rng.gen_range(0.5..2.0);
+            self.choose_idle_animation();
         }
     }
 
@@ -246,7 +305,14 @@ impl PetState {
     }
 
     // --- Animation state ---
-    if !self.is_on_ground {
+    if self.current_action == PetAction::Sleeping {
+        self.animation_state = if self.facing_direction {
+            AnimationState::SleepingRight
+        } else {
+            AnimationState::SleepingLeft
+        };
+    
+    }else if !self.is_on_ground {
         self.animation_state = if self.velocity_y < 0.0 {
             if self.facing_direction { AnimationState::JumpingRight } else { AnimationState::JumpingLeft }
         } else {
@@ -257,7 +323,21 @@ impl PetState {
     } else if self.velocity_x.abs() > MOVEMENT_THRESHOLD {
         self.animation_state = if self.velocity_x > 0.0 { AnimationState::RunningRight } else { AnimationState::RunningLeft };
     } else {
-        self.animation_state = if self.facing_direction { AnimationState::IdleRight } else { AnimationState::IdleLeft };
+        // While the pet is waiting, occasionally use one of the extra idle variants.
+        // The frontend will fall back to normal idle if the current pet does not define it.
+        let currently_idle = matches!(
+            self.animation_state,
+            AnimationState::IdleRight
+                | AnimationState::IdleLeft
+                | AnimationState::IdleAlt1Right
+                | AnimationState::IdleAlt1Left
+                | AnimationState::IdleAlt2Right
+                | AnimationState::IdleAlt2Left
+        );
+
+        if !currently_idle {
+            self.choose_idle_animation();
+        }
     }
 }
 }
