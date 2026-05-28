@@ -15,7 +15,10 @@ use objc::{msg_send, sel, sel_impl};
 use windows::Win32::Foundation::RECT;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
-
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::POINT;
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 // Default window dimensions to ensure consistency
 const DEFAULT_WINDOW_WIDTH: f32 = 400.0;
 const DEFAULT_WINDOW_HEIGHT: f32 = 300.0;
@@ -79,6 +82,7 @@ struct PetState {
     idle_duration: f32,    // how long to stay idle before moving
     action_timer: f32,     // how long current walk/run action lasts
     current_action: PetAction,
+    love_timer: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -123,6 +127,7 @@ impl PetState {
             idle_duration: 2.0,   // start with a 2 second idle
             action_timer: 0.0,
             current_action: PetAction::Idling,
+            love_timer: 0.0,
         }
     }
 
@@ -139,6 +144,21 @@ impl PetState {
         };
     }
 
+    fn is_cursor_over_pet(&self, cursor_x: f32, cursor_y: f32) -> bool {
+    const HITBOX_PADDING: f32 = 8.0;
+
+    let left = self.x + HITBOX_PADDING;
+    let right = self.x + PET_WIDTH - HITBOX_PADDING;
+    let top = self.y + HITBOX_PADDING;
+    let bottom = self.y + PET_HEIGHT - HITBOX_PADDING;
+
+    cursor_x >= left
+        && cursor_x <= right
+        && cursor_y >= top
+        && cursor_y <= bottom
+}
+
+
     fn update(&mut self, window_width: f32, window_height: f32) {
     if (self.window_width - window_width).abs() > 1.0
         || (self.window_height - window_height).abs() > 1.0
@@ -151,6 +171,16 @@ impl PetState {
     let mut delta_time = now.duration_since(self.last_update).as_secs_f32();
     self.last_update = now;
     delta_time = delta_time.min(0.05);
+
+    if self.love_timer > 0.0 {
+        self.love_timer -= delta_time;
+
+        self.velocity_x = 0.0;
+
+        self.current_action = PetAction::Idling;
+
+        return;
+}
 
     const GRAVITY: f32 = 980.0;
     const JUMP_FORCE: f32 = -480.0;
@@ -346,6 +376,7 @@ struct AppState {
     pet: Mutex<PetState>,
 }
 
+
 #[tauri::command]
 fn get_pet_movement(
     state: State<AppState>,
@@ -358,6 +389,23 @@ fn get_pet_movement(
     pet.update(window_width, window_height);
 
     (pet.x, pet.y, pet.animation_state.to_string().to_string())
+}
+
+#[tauri::command]
+fn pet_pet(state: State<AppState>) {
+    let mut pet = state.pet.lock().unwrap();
+
+    let was_already_loved = pet.love_timer > 0.0;
+
+    pet.love_timer = 3.0;
+
+    pet.velocity_x = 0.0;
+    pet.velocity_y = 0.0;
+    pet.current_action = PetAction::Idling;
+
+    if !was_already_loved {
+        pet.choose_idle_animation();
+    }
 }
 
 #[tauri::command]
@@ -378,6 +426,19 @@ fn set_click_through(app: tauri::AppHandle, enabled: bool) {
             println!("Failed to set click-through: {:?}", e);
         } else {
             println!("Click-through set to: {}", enabled);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_cursor_position() -> Option<(f32, f32)> {
+    unsafe {
+        let mut point = POINT { x: 0, y: 0 };
+
+        if GetCursorPos(&mut point).as_bool() {
+            Some((point.x as f32, point.y as f32))
+        } else {
+            None
         }
     }
 }
@@ -417,6 +478,10 @@ fn setup_window_properties(window: &tauri::WebviewWindow) {
     }
 }
 
+
+
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     println!("Starting desktop pet application");
@@ -428,7 +493,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_pet_movement,
             reset_pet_position,
-            set_click_through
+            set_click_through,
+            pet_pet
         ])
         .setup(|app| {
             // Get the main window
@@ -497,7 +563,63 @@ pub fn run() {
                 setup_window_properties(&window);
 
                 window.show().expect("Failed to show window");
-                println!("Window is now visible and ready")
+                println!("Window is now visible and ready");
+
+                #[cfg(target_os = "windows")]
+                {
+                    let app_handle = app.handle().clone();
+
+                    std::thread::spawn(move || {
+                        let mut is_currently_click_through = true;
+
+                        loop {
+                            std::thread::sleep(std::time::Duration::from_millis(150));
+
+                            let Some(window) = app_handle.get_webview_window("main") else {
+                                continue;
+                            };
+
+                            let Some((cursor_x, cursor_y)) = get_cursor_position() else {
+                                continue;
+                            };
+
+                            let Some(state) = app_handle.try_state::<AppState>() else {
+                                continue;
+                            };
+
+                            let pet = state.pet.lock().unwrap();
+
+                            let cursor_over_pet =
+                                pet.is_cursor_over_pet(cursor_x, cursor_y);
+
+                            drop(pet);
+
+                            let should_be_click_through = !cursor_over_pet;
+
+                            if should_be_click_through != is_currently_click_through {
+                                if let Err(error) =
+                                    window.set_ignore_cursor_events(
+                                should_be_click_through
+                                    )
+                                {
+                                    println!(
+                                        "Failed to toggle click-through: {:?}",
+                                        error
+                                    );
+                                } else {
+                                    is_currently_click_through =
+                                        should_be_click_through;
+
+                                    println!(
+                                        "Hitbox changed: click-through = {}",
+                                        should_be_click_through
+                                    );
+                                }
+                            }
+                        }
+                    });
+                }
+
             } else {
                 println!("Warning: Could not find main window");
             }

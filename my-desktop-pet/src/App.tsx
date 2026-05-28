@@ -287,6 +287,9 @@ function App() {
   const [currentPet, setCurrentPet] = useState<PetType>("cat");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  const [hearts, setHearts] = useState<
+    { id: number; xOffset: number; size: number }[]
+  >([]);
 
   //Ref
   const windowRef = useRef<HTMLDivElement>(null);
@@ -541,6 +544,24 @@ function App() {
     setFrameIndex(0);
   }, []);
 
+  const handlePetClick = async () => {
+    await invoke("pet_pet");
+    const id = Date.now();
+
+    setHearts((prev) => [
+      ...prev,
+      {
+        id,
+        xOffset: Math.random() * 24 - 12,
+        size: Math.random() * 4 + 10,
+      },
+    ]);
+
+    setTimeout(() => {
+      setHearts((prev) => prev.filter((heart) => heart.id !== id));
+    }, 700);
+  };
+
   return (
     <div
       className="w-full h-full"
@@ -552,7 +573,6 @@ function App() {
         height: "100vh",
         backgroundColor: "transparent", // Make the background transparent
       }}
-      onDoubleClick={handleReset} // Double click to reset pet position
     >
       {isReady && isVisible && (
         <div
@@ -562,7 +582,25 @@ function App() {
             top: `${position.y}px`,
             transition: "top 50ms linear, left 50ms linear", // Smooth movement
           }}
+          onClick={handlePetClick}
         >
+          {hearts.map((heart) => (
+            <div
+              key={heart.id}
+              className="absolute pointer-events-none select-none"
+              style={{
+                left: `calc(50% + ${heart.xOffset}px)`,
+                top: "0px",
+                transform: "translateX(-50%)",
+                fontSize: `${heart.size}px`,
+                lineHeight: `${heart.size}px`,
+                animation: "heart-pop 700ms ease-out forwards",
+                zIndex: 10,
+              }}
+            >
+              ❤️
+            </div>
+          ))}
           <div style={getSpriteStyle()} draggable={false} />
         </div>
       )}
