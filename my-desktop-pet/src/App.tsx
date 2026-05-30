@@ -8,6 +8,9 @@ import catSpriteSheet from "./assets/Cat Sprite Sheet.png";
 import redPandaSpriteSheet from "./assets/Red Panda Sprite Sheet.png";
 import Settings from "./Settings";
 
+//Types
+import type { PetStats } from "./types";
+
 // Constants for configuration
 const DEFAULT_WINDOW_WIDTH = 1920;
 const DEFAULT_WINDOW_HEIGHT = 1032;
@@ -291,6 +294,11 @@ function App() {
     { id: number; xOffset: number; size: number }[]
   >([]);
 
+  const [petStats, setPetStats] = useState<PetStats>({
+    affection: 50,
+    hunger: 100,
+    energy: 100,
+  });
   //Ref
   const windowRef = useRef<HTMLDivElement>(null);
   const animationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -437,6 +445,15 @@ function App() {
       } catch (error) {
         console.error("Failed to update pet position:", error);
       }
+
+      const [affection, hunger, energy] =
+        await invoke<[number, number, number]>("get_pet_stats");
+
+      setPetStats({
+        affection,
+        hunger,
+        energy,
+      });
     };
 
     // Initial position update
@@ -611,6 +628,7 @@ function App() {
         isVisible={isVisible}
         onPetChange={handlePetChange}
         onVisibilityChange={setIsVisible}
+        petStats={petStats}
       />
     </div>
   );

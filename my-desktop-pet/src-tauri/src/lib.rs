@@ -67,6 +67,23 @@ impl AnimationState {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct PetNeeds {
+    affection: f32,
+    hunger: f32,
+    energy: f32,
+}
+
+impl PetNeeds {
+    fn new() -> Self {
+        Self {
+            affection: 50.0,
+            hunger: 100.0,
+            energy: 100.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 struct PetState {
     x: f32,
     y: f32,
@@ -83,6 +100,7 @@ struct PetState {
     action_timer: f32,     // how long current walk/run action lasts
     current_action: PetAction,
     love_timer: f32,
+    needs: PetNeeds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -128,6 +146,7 @@ impl PetState {
             action_timer: 0.0,
             current_action: PetAction::Idling,
             love_timer: 0.0,
+            needs: PetNeeds::new(),
         }
     }
 
@@ -398,7 +417,9 @@ fn pet_pet(state: State<AppState>) {
     let was_already_loved = pet.love_timer > 0.0;
 
     pet.love_timer = 3.0;
+    pet.needs.affection = (pet.needs.affection + 5.0).min(100.0);
 
+    println!("Affection: {}", pet.needs.affection);
     pet.velocity_x = 0.0;
     pet.velocity_y = 0.0;
     pet.current_action = PetAction::Idling;
@@ -406,6 +427,17 @@ fn pet_pet(state: State<AppState>) {
     if !was_already_loved {
         pet.choose_idle_animation();
     }
+}
+
+#[tauri::command]
+fn get_pet_stats(state: State<AppState>) -> (f32, f32, f32) {
+    let pet = state.pet.lock().unwrap();
+
+    (
+        pet.needs.affection,
+        pet.needs.hunger,
+        pet.needs.energy,
+    )
 }
 
 #[tauri::command]
@@ -494,7 +526,8 @@ pub fn run() {
             get_pet_movement,
             reset_pet_position,
             set_click_through,
-            pet_pet
+            pet_pet,
+            get_pet_stats
         ])
         .setup(|app| {
             // Get the main window
@@ -610,10 +643,7 @@ pub fn run() {
                                     is_currently_click_through =
                                         should_be_click_through;
 
-                                    println!(
-                                        "Hitbox changed: click-through = {}",
-                                        should_be_click_through
-                                    );
+                    
                                 }
                             }
                         }
