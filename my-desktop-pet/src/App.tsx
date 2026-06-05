@@ -298,6 +298,7 @@ function App() {
     affection: 50,
     hunger: 100,
     energy: 100,
+    mood: "Neutral",
   });
   //Ref
   const windowRef = useRef<HTMLDivElement>(null);
@@ -446,13 +447,14 @@ function App() {
         console.error("Failed to update pet position:", error);
       }
 
-      const [affection, hunger, energy] =
-        await invoke<[number, number, number]>("get_pet_stats");
+      const [affection, hunger, energy, mood] =
+        await invoke<[number, number, number, string]>("get_pet_stats");
 
       setPetStats({
         affection,
         hunger,
         energy,
+        mood,
       });
     };
 

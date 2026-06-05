@@ -66,6 +66,14 @@ impl AnimationState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum EmotionState {
+    Lonely,
+    Neutral,
+    Happy,
+    Excited,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct PetNeeds {
     affection: f32,
@@ -154,9 +162,31 @@ impl PetState {
         let mut rng = rand::thread_rng();
         let roll: f32 = rng.gen();
 
-        self.animation_state = if roll < 0.70 {
+        let affection = self.needs.affection;
+
+        let alt_1_chance = if affection < 25.0 {
+            0.10
+        } else if affection < 50.0 {
+            0.20
+        } else if affection < 75.0 {
+            0.30
+        } else {
+            0.40
+        };
+
+        let alt_2_chance = if affection < 25.0 {
+            0.02
+        } else if affection < 50.0 {
+            0.10
+        } else if affection < 75.0 {
+            0.15
+        } else {
+            0.25
+        };
+    
+        self.animation_state = if roll < 1.0 - alt_1_chance - alt_2_chance {
             if self.facing_direction { AnimationState::IdleRight } else { AnimationState::IdleLeft }
-        } else if roll < 0.90 {
+        } else if roll < 1.0 - alt_2_chance {
             if self.facing_direction { AnimationState::IdleAlt1Right } else { AnimationState::IdleAlt1Left }
         } else {
             if self.facing_direction { AnimationState::IdleAlt2Right } else { AnimationState::IdleAlt2Left }
@@ -175,8 +205,19 @@ impl PetState {
         && cursor_x <= right
         && cursor_y >= top
         && cursor_y <= bottom
-}
+    }
 
+    fn emotion_state(&self) -> EmotionState {
+        if self.needs.affection < 25.0 {
+            EmotionState::Lonely
+        } else if self.needs.affection < 50.0 {
+            EmotionState::Neutral
+        } else if self.needs.affection < 75.0 {
+            EmotionState::Happy
+        } else {
+            EmotionState::Excited
+        }
+    }
 
     fn update(&mut self, window_width: f32, window_height: f32) {
     if (self.window_width - window_width).abs() > 1.0
@@ -190,6 +231,15 @@ impl PetState {
     let mut delta_time = now.duration_since(self.last_update).as_secs_f32();
     self.last_update = now;
     delta_time = delta_time.min(0.05);
+
+    const AFFECTION_DECAY_PER_SECOND: f32 = 1.0;
+
+    if self.love_timer <= 0.0 {
+        self.needs.affection =
+            (self.needs.affection - AFFECTION_DECAY_PER_SECOND * delta_time)
+                .max(0.0);
+    }
+
 
     if self.love_timer > 0.0 {
         self.love_timer -= delta_time;
@@ -229,8 +279,17 @@ impl PetState {
                 if self.idle_timer >= self.idle_duration {
                     // Decide next action
                     self.idle_timer = 0.0;
+
+                    let sleep_chance = match self.emotion_state() {
+                        EmotionState::Lonely => 0.15,
+                        EmotionState::Neutral => 0.10,
+                        EmotionState::Happy => 0.07,
+                        EmotionState::Excited => 0.05,
+                    };
+
                     let roll: f32 = rng.gen();
-                    if roll < 0.05{
+
+                    if roll < sleep_chance{
                         self.current_action = PetAction::Sleeping;
                         self.action_timer = rng.gen_range(20.0..30.0);
 
@@ -349,7 +408,7 @@ impl PetState {
     let right_boundary = effective_width - PET_WIDTH;
     if self.x > right_boundary {
         self.x = right_boundary;
-        self.velocity_x = -self.velocity_x.abs() * 0.5;
+        self.velocity_x = - self.velocity_x.abs() * 0.5;
         self.facing_direction = false;
     }
 
@@ -411,13 +470,34 @@ fn get_pet_movement(
 }
 
 #[tauri::command]
+fn get_pet_mood(state: State<AppState>) -> String {
+    let pet = state.pet.lock().unwrap();
+
+    match pet.emotion_state() {
+        EmotionState::Lonely => "Lonely".to_string(),
+        EmotionState::Neutral => "Neutral".to_string(),
+        EmotionState::Happy => "Happy".to_string(),
+        EmotionState::Excited => "Excited".to_string(),
+    }
+}
+#[tauri::command]
 fn pet_pet(state: State<AppState>) {
     let mut pet = state.pet.lock().unwrap();
 
     let was_already_loved = pet.love_timer > 0.0;
 
     pet.love_timer = 3.0;
-    pet.needs.affection = (pet.needs.affection + 5.0).min(100.0);
+
+    
+
+    let affection_gain = match pet.emotion_state(){
+        EmotionState::Lonely => 8.0,
+        EmotionState::Neutral => 5.0,
+        EmotionState::Happy => 3.0,
+        EmotionState::Excited => 1.5,
+    }
+
+    pet.needs.affection = (pet.needs.affection + affection_gain).min(100.0);
 
     println!("Affection: {}", pet.needs.affection);
     pet.velocity_x = 0.0;
@@ -430,13 +510,21 @@ fn pet_pet(state: State<AppState>) {
 }
 
 #[tauri::command]
-fn get_pet_stats(state: State<AppState>) -> (f32, f32, f32) {
+fn get_pet_stats(state: State<AppState>) -> (f32, f32, f32, String) {
     let pet = state.pet.lock().unwrap();
 
+
+    let mood = match pet.emotion_state() {
+        EmotionState::Lonely => "Lonely",
+        EmotionState::Neutral => "Neutral",
+        EmotionState::Happy => "Happy",
+        EmotionState::Excited => "Excited",
+    };
     (
         pet.needs.affection,
         pet.needs.hunger,
         pet.needs.energy,
+        mood.to_string(),
     )
 }
 

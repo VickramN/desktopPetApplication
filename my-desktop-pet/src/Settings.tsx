@@ -134,6 +134,7 @@ export default function Settings({
         </div>
         <div className="mb-4 border-t pt-3">
           <h3 className="font-medium mb-2">Pet Stats</h3>
+          <p className="text-sm">Mood: {petStats.mood}</p>
           <p className="text-sm">Affection: {Math.round(petStats.affection)}</p>
           <p className="text-sm">Hunger: {Math.round(petStats.hunger)}</p>
           <p className="text-sm">Energy: {Math.round(petStats.energy)}</p>
