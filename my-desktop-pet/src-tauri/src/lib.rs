@@ -7,6 +7,9 @@ use tauri::Manager;
 use tauri::PhysicalSize;
 use tauri::State;
 use tauri::Emitter;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 
 #[cfg(target_os = "macos")]
 use objc::{msg_send, sel, sel_impl};
@@ -74,7 +77,7 @@ enum EmotionState {
     Excited,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct PetNeeds {
     affection: f32,
     hunger: f32,
@@ -89,6 +92,15 @@ impl PetNeeds {
             energy: 100.0,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SaveData {
+    selected_pet: String,
+    is_visible: bool,
+    cat: PetNeeds,
+    fox: PetNeeds,
+    red_panda: PetNeeds,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -220,253 +232,264 @@ impl PetState {
     }
 
     fn update(&mut self, window_width: f32, window_height: f32) {
-    if (self.window_width - window_width).abs() > 1.0
-        || (self.window_height - window_height).abs() > 1.0
-    {
-        self.window_width = window_width;
-        self.window_height = window_height;
-    }
+        if (self.window_width - window_width).abs() > 1.0
+            || (self.window_height - window_height).abs() > 1.0
+        {
+            self.window_width = window_width;
+            self.window_height = window_height;
+        }
 
-    let now = Instant::now();
-    let mut delta_time = now.duration_since(self.last_update).as_secs_f32();
-    self.last_update = now;
-    delta_time = delta_time.min(0.05);
+        let now = Instant::now();
+        let mut delta_time = now.duration_since(self.last_update).as_secs_f32();
+        self.last_update = now;
+        delta_time = delta_time.min(0.05);
 
-    const AFFECTION_DECAY_PER_SECOND: f32 = 1.0;
-    const ENERGY_DECAY_PER_SECOND: f32 = 0.0005;
+        const AFFECTION_DECAY_PER_SECOND: f32 = 1.0;
+        const ENERGY_DECAY_PER_SECOND: f32 = 0.0005;
 
-    if self.love_timer <= 0.0 {
-        self.needs.affection =
-            (self.needs.affection - AFFECTION_DECAY_PER_SECOND * delta_time)
-                .max(0.0);
-    }
+        if self.love_timer <= 0.0 {
+            self.needs.affection =
+                (self.needs.affection - AFFECTION_DECAY_PER_SECOND * delta_time)
+                    .max(0.0);
+        }
 
-    if self.current_action != PetAction::Sleeping {
-        self.needs.energy =
-            (self.needs.energy - ENERGY_DECAY_PER_SECOND * delta_time).max(0.0);
-    }
+        if self.current_action != PetAction::Sleeping {
+            self.needs.energy =
+                (self.needs.energy - ENERGY_DECAY_PER_SECOND * delta_time).max(0.0);
+        }
 
-    if self.love_timer > 0.0 {
-        self.love_timer -= delta_time;
+        if self.love_timer > 0.0 {
+            self.love_timer -= delta_time;
 
-        self.velocity_x = 0.0;
+            self.velocity_x = 0.0;
 
-        self.current_action = PetAction::Idling;
+            self.current_action = PetAction::Idling;
 
-        return;
-}
+            return;
+        }
 
-    const GRAVITY: f32 = 980.0;
-    const JUMP_FORCE: f32 = -480.0;
-    const WALK_SPEED: f32 = 80.0;
-    const RUN_SPEED: f32 = 200.0;
-    const FRICTION: f32 = 6.0;        // ground deceleration multiplier
-    const MOVEMENT_THRESHOLD: f32 = 8.0;
+        const GRAVITY: f32 = 980.0;
+        const JUMP_FORCE: f32 = -480.0;
+        const WALK_SPEED: f32 = 80.0;
+        const RUN_SPEED: f32 = 200.0;
+        const FRICTION: f32 = 6.0;        // ground deceleration multiplier
+        const MOVEMENT_THRESHOLD: f32 = 8.0;
 
-    let effective_width = if window_width <= 10.0 { DEFAULT_WINDOW_WIDTH } else { window_width };
-    let effective_height = if window_height <= 10.0 { DEFAULT_WINDOW_HEIGHT } else { window_height };
+        let effective_width = if window_width <= 10.0 { DEFAULT_WINDOW_WIDTH } else { window_width };
+        let effective_height = if window_height <= 10.0 { DEFAULT_WINDOW_HEIGHT } else { window_height };
 
-    // --- Gravity ---
-    if !self.is_on_ground {
-        self.velocity_y += GRAVITY * delta_time;
-    }
+        // --- Gravity ---
+        if !self.is_on_ground {
+            self.velocity_y += GRAVITY * delta_time;
+        }
 
-    let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
-    // --- Ground behaviour state machine ---
-    if self.is_on_ground {
-        match self.current_action {
-            PetAction::Idling => {
-                // Apply friction to bleed off any residual velocity
-                self.velocity_x *= (1.0 - FRICTION * delta_time).max(0.0);
+        // --- Ground behaviour state machine ---
+        if self.is_on_ground {
+            match self.current_action {
+                PetAction::Idling => {
+                    // Apply friction to bleed off any residual velocity
+                    self.velocity_x *= (1.0 - FRICTION * delta_time).max(0.0);
 
-                self.idle_timer += delta_time;
-                if self.idle_timer >= self.idle_duration {
-                    // Decide next action
-                    self.idle_timer = 0.0;
+                    self.idle_timer += delta_time;
+                    if self.idle_timer >= self.idle_duration {
+                        // Decide next action
+                        self.idle_timer = 0.0;
 
-                    let mut sleep_chance: f32 = match self.emotion_state() {
-                        EmotionState::Lonely => 0.15,
-                        EmotionState::Neutral => 0.10,
-                        EmotionState::Happy => 0.07,
-                        EmotionState::Excited => 0.05,
-                    };
-                    
-                    if self.needs.energy < 25.0 {
-                        sleep_chance += 0.15;
-                    } else if self.needs.energy < 50.0 {
-                        sleep_chance += 0.08;
-                    }
-
-                    sleep_chance = sleep_chance.min(0.30);
-
-                    let roll: f32 = rng.gen();
-
-                    if roll < sleep_chance{
-                        self.current_action = PetAction::Sleeping;
-                        self.action_timer = rng.gen_range(20.0..30.0);
-
-                        self.velocity_x = 0.0;
-
-                        self.animation_state = if self.facing_direction {
-                            AnimationState::SleepingRight
-                        } else {
-                            AnimationState:: SleepingLeft
+                        let mut sleep_chance: f32 = match self.emotion_state() {
+                            EmotionState::Lonely => 0.15,
+                            EmotionState::Neutral => 0.10,
+                            EmotionState::Happy => 0.07,
+                            EmotionState::Excited => 0.05,
                         };
-                    } 
-                    else if roll < 0.20 {
-                        // Jump
-                        self.velocity_y = JUMP_FORCE;
-                        let speed = rng.gen_range(60.0..RUN_SPEED);
-                        self.velocity_x = if self.facing_direction { speed } else { -speed };
-                        self.is_on_ground = false;
-                        self.current_action = PetAction::Idling; // reset after landing
-                    } else if roll < 0.55 {
-                        // Walk
-                        self.current_action = PetAction::Walking;
-                        self.action_timer = rng.gen_range(1.5..4.0);
-                        // Randomly pick a direction
-                        self.facing_direction = rng.gen_bool(0.5);
-                    } else {
-                        // Run
-                        self.current_action = PetAction::Running;
-                        self.action_timer = rng.gen_range(0.8..2.5);
-                        self.facing_direction = rng.gen_bool(0.5);
+                    
+                        if self.needs.energy < 25.0 {
+                            sleep_chance += 0.15;
+                        } else if self.needs.energy < 50.0 {
+                            sleep_chance += 0.08;
+                        }
+
+                        sleep_chance = sleep_chance.min(0.30);
+
+                        let roll: f32 = rng.gen();
+
+                        if roll < sleep_chance{
+                            self.current_action = PetAction::Sleeping;
+                            self.action_timer = rng.gen_range(20.0..30.0);
+
+                            self.velocity_x = 0.0;
+
+                            self.animation_state = if self.facing_direction {
+                                AnimationState::SleepingRight
+                            } else {
+                                AnimationState:: SleepingLeft
+                            };
+                        } 
+                        else if roll < 0.20 {
+                            // Jump
+                            self.velocity_y = JUMP_FORCE;
+                            let speed = rng.gen_range(60.0..RUN_SPEED);
+                            self.velocity_x = if self.facing_direction { speed } else { -speed };
+                            self.is_on_ground = false;
+                            self.current_action = PetAction::Idling; // reset after landing
+                        } else if roll < 0.55 {
+                            // Walk
+                            self.current_action = PetAction::Walking;
+                            self.action_timer = rng.gen_range(1.5..4.0);
+                            // Randomly pick a direction
+                            self.facing_direction = rng.gen_bool(0.5);
+                        } else {
+                            // Run
+                            self.current_action = PetAction::Running;
+                            self.action_timer = rng.gen_range(0.8..2.5);
+                            self.facing_direction = rng.gen_bool(0.5);
+                        }
+                        // Next idle will last 1–4 seconds
+                        self.idle_duration = rng.gen_range(1.0..4.0);
                     }
-                    // Next idle will last 1–4 seconds
-                    self.idle_duration = rng.gen_range(1.0..4.0);
                 }
-            }
 
-            PetAction::Walking => {
-                let target_vx = if self.facing_direction { WALK_SPEED } else { -WALK_SPEED };
-                // Smoothly accelerate toward walk speed
-                self.velocity_x += (target_vx - self.velocity_x) * (FRICTION * delta_time).min(1.0);
+                PetAction::Walking => {
+                    let target_vx = if self.facing_direction { WALK_SPEED } else { -WALK_SPEED };
+                    // Smoothly accelerate toward walk speed
+                    self.velocity_x += (target_vx - self.velocity_x) * (FRICTION * delta_time).min(1.0);
 
-                self.action_timer -= delta_time;
-                if self.action_timer <= 0.0 {
-                    self.current_action = PetAction::Idling;
-                    self.idle_timer = 0.0;
-                    self.choose_idle_animation();
+                    self.action_timer -= delta_time;
+                    if self.action_timer <= 0.0 {
+                        self.current_action = PetAction::Idling;
+                        self.idle_timer = 0.0;
+                        self.choose_idle_animation();
+                    }
+                }   
+
+                PetAction::Running => {
+                    let target_vx = if self.facing_direction { RUN_SPEED } else { -RUN_SPEED };
+                    // Faster acceleration for running
+                    self.velocity_x += (target_vx - self.velocity_x) * (FRICTION * 1.5 * delta_time).min(1.0);
+
+                    self.action_timer -= delta_time;
+                    if self.action_timer <= 0.0 {
+                        self.current_action = PetAction::Idling;
+                        self.idle_timer = 0.0;
+                        self.choose_idle_animation();
+                    }
                 }
-            }
 
-            PetAction::Running => {
-                let target_vx = if self.facing_direction { RUN_SPEED } else { -RUN_SPEED };
-                // Faster acceleration for running
-                self.velocity_x += (target_vx - self.velocity_x) * (FRICTION * 1.5 * delta_time).min(1.0);
+                PetAction::Sleeping => {
 
-                self.action_timer -= delta_time;
-                if self.action_timer <= 0.0 {
-                    self.current_action = PetAction::Idling;
-                    self.idle_timer = 0.0;
-                    self.choose_idle_animation();
-                }
-            }
+                    const ENERGY_RECOVERY_PER_SECOND: f32 = 0.5;
 
-            PetAction::Sleeping => {
-
-                const ENERGY_RECOVERY_PER_SECOND: f32 = 0.5;
-
-                self.needs.energy = 
+                    self.needs.energy = 
                     (self.needs.energy + ENERGY_RECOVERY_PER_SECOND * delta_time).min(100.0);
 
-                self.velocity_x = 0.0;
+                    self.velocity_x = 0.0;
 
-                self.action_timer -= delta_time;
+                    self.action_timer -= delta_time;
 
-                self.animation_state = if self.facing_direction {
-                    AnimationState::SleepingRight
-                } else {
-                    AnimationState::SleepingLeft
-                };
+                    self.animation_state = if self.facing_direction {
+                        AnimationState::SleepingRight
+                    } else {
+                        AnimationState::SleepingLeft
+                    };
 
-                if self.action_timer <= 0.0 {
-                    self.current_action = PetAction::Idling;
-                    self.idle_timer = 0.0;
-                    self.idle_duration = rng.gen_range(1.0..4.0);
+                    if self.action_timer <= 0.0 {
+                        self.current_action = PetAction::Idling;
+                        self.idle_timer = 0.0;
+                        self.idle_duration = rng.gen_range(1.0..4.0);
+                    }
                 }
             }
         }
-    }
 
-    // --- Position update ---
-    self.x += self.velocity_x * delta_time;
-    self.y += self.velocity_y * delta_time;
+        // --- Position update ---
+        self.x += self.velocity_x * delta_time;
+        self.y += self.velocity_y * delta_time;
 
-    // --- Boundaries ---
-    let floor = effective_height - PET_HEIGHT;
-    if self.y >= floor {
-        self.y = floor;
-        self.velocity_y = 0.0;
-        if !self.is_on_ground {
-            // Just landed — go idle briefly
-            self.is_on_ground = true;
-            self.current_action = PetAction::Idling;
-            self.idle_timer = 0.0;
-            self.idle_duration = rng.gen_range(0.5..2.0);
-            self.choose_idle_animation();
+        // --- Boundaries ---
+        let floor = effective_height - PET_HEIGHT;
+        if self.y >= floor {
+            self.y = floor;
+            self.velocity_y = 0.0;
+            if !self.is_on_ground {
+                // Just landed — go idle briefly
+                self.is_on_ground = true;
+                self.current_action = PetAction::Idling;
+                self.idle_timer = 0.0;
+                self.idle_duration = rng.gen_range(0.5..2.0);
+                self.choose_idle_animation();
+            }
         }
-    }
 
-    if self.y < 0.0 {
-        self.y = 0.0;
-        self.velocity_y = 0.0;
-    }
+        if self.y < 0.0 {
+            self.y = 0.0;
+            self.velocity_y = 0.0;
+        }
 
-    if self.x < 0.0 {
-        self.x = 0.0;
-        self.velocity_x = self.velocity_x.abs() * 0.5;
-        self.facing_direction = true;
-        if self.current_action != PetAction::Idling {
-            // Reverse direction instead of stopping
+        if self.x < 0.0 {
+            self.x = 0.0;
+            self.velocity_x = self.velocity_x.abs() * 0.5;
             self.facing_direction = true;
+            if self.current_action != PetAction::Idling {
+                // Reverse direction instead of stopping
+                self.facing_direction = true;
+            }
         }
-    }
 
-    let right_boundary = effective_width - PET_WIDTH;
-    if self.x > right_boundary {
-        self.x = right_boundary;
-        self.velocity_x = - self.velocity_x.abs() * 0.5;
-        self.facing_direction = false;
-    }
+        let right_boundary = effective_width - PET_WIDTH;
+        if self.x > right_boundary {
+            self.x = right_boundary;
+            self.velocity_x = - self.velocity_x.abs() * 0.5;
+            self.facing_direction = false;
+        }
 
-    // --- Animation state ---
-    if self.current_action == PetAction::Sleeping {
-        self.animation_state = if self.facing_direction {
-            AnimationState::SleepingRight
+        // --- Animation state ---
+        if self.current_action == PetAction::Sleeping {
+            self.animation_state = if self.facing_direction {
+                AnimationState::SleepingRight
+            } else {
+                AnimationState::SleepingLeft
+            };
+            
+        }else if !self.is_on_ground {
+            self.animation_state = if self.velocity_y < 0.0 {
+                if self.facing_direction { AnimationState::JumpingRight } else { AnimationState::JumpingLeft }
+            } else {
+                if self.facing_direction { AnimationState::FallingRight } else { AnimationState::FallingLeft }
+            };
+        } else if self.velocity_x.abs() > RUN_SPEED * 0.6 {
+            self.animation_state = if self.velocity_x > 0.0 { AnimationState::RunningRight } else { AnimationState::RunningLeft };
+        } else if self.velocity_x.abs() > MOVEMENT_THRESHOLD {
+            self.animation_state = if self.velocity_x > 0.0 { AnimationState::RunningRight } else { AnimationState::RunningLeft };
         } else {
-            AnimationState::SleepingLeft
-        };
-    
-    }else if !self.is_on_ground {
-        self.animation_state = if self.velocity_y < 0.0 {
-            if self.facing_direction { AnimationState::JumpingRight } else { AnimationState::JumpingLeft }
-        } else {
-            if self.facing_direction { AnimationState::FallingRight } else { AnimationState::FallingLeft }
-        };
-    } else if self.velocity_x.abs() > RUN_SPEED * 0.6 {
-        self.animation_state = if self.velocity_x > 0.0 { AnimationState::RunningRight } else { AnimationState::RunningLeft };
-    } else if self.velocity_x.abs() > MOVEMENT_THRESHOLD {
-        self.animation_state = if self.velocity_x > 0.0 { AnimationState::RunningRight } else { AnimationState::RunningLeft };
-    } else {
-        // While the pet is waiting, occasionally use one of the extra idle variants.
-        // The frontend will fall back to normal idle if the current pet does not define it.
-        let currently_idle = matches!(
-            self.animation_state,
-            AnimationState::IdleRight
-                | AnimationState::IdleLeft
-                | AnimationState::IdleAlt1Right
-                | AnimationState::IdleAlt1Left
-                | AnimationState::IdleAlt2Right
-                | AnimationState::IdleAlt2Left
-        );
+            // While the pet is waiting, occasionally use one of the extra idle variants.
+            // The frontend will fall back to normal idle if the current pet does not define it.
+            let currently_idle = matches!(
+                self.animation_state,
+                AnimationState::IdleRight
+                    | AnimationState::IdleLeft
+                    | AnimationState::IdleAlt1Right
+                    | AnimationState::IdleAlt1Left
+                    | AnimationState::IdleAlt2Right
+                    | AnimationState::IdleAlt2Left
+            );
 
-        if !currently_idle {
-            self.choose_idle_animation();
+            if !currently_idle {
+                self.choose_idle_animation();
+            }
         }
     }
 }
+
+fn save_file_path() -> PathBuf {
+    let mut path = dirs::data_local_dir()
+        .unwrap_or_else(|| std::env::current_dir().unwrap());
+
+    path.push("my-desktop-pet");
+    let _ = fs::create_dir_all(&path);
+
+    path.push("save.json");
+    path
 }
 
 struct AppState {
