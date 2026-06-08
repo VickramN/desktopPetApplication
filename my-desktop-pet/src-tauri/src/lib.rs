@@ -233,6 +233,7 @@ impl PetState {
     delta_time = delta_time.min(0.05);
 
     const AFFECTION_DECAY_PER_SECOND: f32 = 1.0;
+    const ENERGY_DECAY_PER_SECOND: f32 = 0.0005;
 
     if self.love_timer <= 0.0 {
         self.needs.affection =
@@ -240,6 +241,10 @@ impl PetState {
                 .max(0.0);
     }
 
+    if self.current_action != PetAction::Sleeping {
+        self.needs.energy =
+            (self.needs.energy - ENERGY_DECAY_PER_SECOND * delta_time).max(0.0);
+    }
 
     if self.love_timer > 0.0 {
         self.love_timer -= delta_time;
@@ -280,12 +285,20 @@ impl PetState {
                     // Decide next action
                     self.idle_timer = 0.0;
 
-                    let sleep_chance = match self.emotion_state() {
+                    let mut sleep_chance: f32 = match self.emotion_state() {
                         EmotionState::Lonely => 0.15,
                         EmotionState::Neutral => 0.10,
                         EmotionState::Happy => 0.07,
                         EmotionState::Excited => 0.05,
                     };
+                    
+                    if self.needs.energy < 25.0 {
+                        sleep_chance += 0.15;
+                    } else if self.needs.energy < 50.0 {
+                        sleep_chance += 0.08;
+                    }
+
+                    sleep_chance = sleep_chance.min(0.30);
 
                     let roll: f32 = rng.gen();
 
@@ -352,6 +365,12 @@ impl PetState {
             }
 
             PetAction::Sleeping => {
+
+                const ENERGY_RECOVERY_PER_SECOND: f32 = 0.5;
+
+                self.needs.energy = 
+                    (self.needs.energy + ENERGY_RECOVERY_PER_SECOND * delta_time).min(100.0);
+
                 self.velocity_x = 0.0;
 
                 self.action_timer -= delta_time;
@@ -470,17 +489,6 @@ fn get_pet_movement(
 }
 
 #[tauri::command]
-fn get_pet_mood(state: State<AppState>) -> String {
-    let pet = state.pet.lock().unwrap();
-
-    match pet.emotion_state() {
-        EmotionState::Lonely => "Lonely".to_string(),
-        EmotionState::Neutral => "Neutral".to_string(),
-        EmotionState::Happy => "Happy".to_string(),
-        EmotionState::Excited => "Excited".to_string(),
-    }
-}
-#[tauri::command]
 fn pet_pet(state: State<AppState>) {
     let mut pet = state.pet.lock().unwrap();
 
@@ -495,7 +503,7 @@ fn pet_pet(state: State<AppState>) {
         EmotionState::Neutral => 5.0,
         EmotionState::Happy => 3.0,
         EmotionState::Excited => 1.5,
-    }
+    };
 
     pet.needs.affection = (pet.needs.affection + affection_gain).min(100.0);
 
